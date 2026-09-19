@@ -13,16 +13,14 @@ L.Icon.Default.mergeOptions({
 });
 
 // Coordenadas centrais do Campus UNAERP (Ribeirânia - Ribeirão Preto)
-export const UNAERP_CENTER = [-21.2010, -47.7792];
+export const UNAERP_CENTER = [-21.2018, -47.7790];
 
 // Polígono do Campus UNAERP
 const UNAERP_POLYGON = [
-  [-21.1995, -47.7782],
-  [-21.2003, -47.7768],
-  [-21.2032, -47.7780],
-  [-21.2035, -47.7808],
-  [-21.2015, -47.7806],
-  [-21.2000, -47.7798],
+  [-21.1988, -47.7820],  // Noroeste
+  [-21.1988, -47.7770],  // Nordeste
+  [-21.2045, -47.7770],  // Sudeste
+  [-21.2045, -47.7820],  // Sudoeste
 ];
 
 // Ícones customizados
@@ -55,6 +53,52 @@ const createIcon = (color, emoji = '📍', size = 36) => {
 const startIcon = createIcon('#10b981', '🟢', 40);
 const endIcon = createIcon('#fbc02d', '🎯', 40);
 
+// Ícone azul (origem - padrão Google Maps)
+const createOriginIcon = () => L.divIcon({
+  className: 'origin-marker',
+  html: `
+    <div style="
+      position: relative;
+      width: 24px;
+      height: 24px;
+    ">
+      <div style="
+        position: absolute;
+        top: 0;
+        left: 0;
+        width: 24px;
+        height: 24px;
+        background: #4285f4;
+        border: 3px solid white;
+        border-radius: 50%;
+        box-shadow: 0 2px 6px rgba(0,0,0,0.4);
+      "></div>
+    </div>
+  `,
+  iconSize: [24, 24],
+  iconAnchor: [12, 12],
+});
+
+// Ícone vermelho (destino - padrão Google Maps)
+const createDestinationIcon = () => L.divIcon({
+  className: 'destination-marker',
+  html: `
+    <div style="
+      position: relative;
+      width: 32px;
+      height: 42px;
+    ">
+      <svg width="32" height="42" viewBox="0 0 32 42" fill="none" xmlns="http://www.w3.org/2000/svg">
+        <path d="M16 0C7.163 0 0 7.163 0 16c0 12 16 26 16 26s16-14 16-26c0-8.837-7.163-16-16-16z" fill="#EA4335"/>
+        <circle cx="16" cy="16" r="6" fill="white"/>
+      </svg>
+    </div>
+  `,
+  iconSize: [32, 42],
+  iconAnchor: [16, 42],
+  popupAnchor: [0, -42],
+});
+
 const getPoiEmoji = (type) => {
   const map = {
     classroom: '🏫',
@@ -66,6 +110,7 @@ const getPoiEmoji = (type) => {
     sports: '⚽',
     entrance: '🚪',
     parking: '🅿️',
+    admin: '🏦',
   };
   return map[type] || '📍';
 };
@@ -74,6 +119,8 @@ export default function Map({
   startPoint,
   endPoint,
   routes = [],
+  selectedRoute,
+  routeGeometry,
   pois = UNAERP_CAMPUS_POIS,
   onSelectOrigin,
   onSelectDestination,
@@ -91,7 +138,7 @@ export default function Map({
     mapInstance.current = L.map(mapContainer.current, {
       zoomControl: false,
       attributionControl: false,
-    }).setView(UNAERP_CENTER, 17);
+    }).setView(UNAERP_CENTER, 16);
 
     // Camada de mapas OpenStreetMap
     L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
@@ -100,12 +147,12 @@ export default function Map({
     }).addTo(mapInstance.current);
 
     // Polígono demarcador do Campus UNAERP
-    L.polygon(UNAERP_POLYGON, {
+    const campusPolygon = L.polygon(UNAERP_POLYGON, {
       color: '#1a237e',
       weight: 2,
-      opacity: 0.6,
+      opacity: 0.5,
       fillColor: '#1a237e',
-      fillOpacity: 0.08,
+      fillOpacity: 0.04,      // ← leve preenchimento azul
       dashArray: '6, 6',
     }).addTo(mapInstance.current);
 
@@ -162,9 +209,6 @@ export default function Map({
           <button id="btn-end-${poi.id}" style="background: #fbc02d; color: #1a237e; border: none; padding: 5px 10px; border-radius: 6px; font-size: 12px; font-weight: 600; cursor: pointer; text-align: center;">
             🎯 Ir para cá
           </button>
-          <button id="btn-pano-${poi.id}" style="background: #1a237e; color: #fbc02d; border: none; padding: 5px 10px; border-radius: 6px; font-size: 12px; font-weight: 700; cursor: pointer; text-align: center; display: flex; align-items: center; justify-content: center; gap: 4px;">
-            📸 Tour 360° (Foto)
-          </button>
           <button id="btn-sv-${poi.id}" style="background: #374151; color: white; border: none; padding: 5px 10px; border-radius: 6px; font-size: 12px; font-weight: 600; cursor: pointer; text-align: center; display: flex; align-items: center; justify-content: center; gap: 4px;">
             📷 Street View (Entrada)
           </button>
@@ -176,7 +220,6 @@ export default function Map({
       marker.on('popupopen', () => {
         const startBtn = document.getElementById(`btn-start-${poi.id}`);
         const endBtn = document.getElementById(`btn-end-${poi.id}`);
-        const panoBtn = document.getElementById(`btn-pano-${poi.id}`);
         const svBtn = document.getElementById(`btn-sv-${poi.id}`);
 
         if (startBtn && onSelectOrigin) {
@@ -191,12 +234,6 @@ export default function Map({
             marker.closePopup();
           };
         }
-        if (panoBtn && onOpenPanorama) {
-          panoBtn.onclick = () => {
-            onOpenPanorama(poi);
-            marker.closePopup();
-          };
-        }
         if (svBtn && onOpenStreetView) {
           svBtn.onclick = () => {
             onOpenStreetView(poi);
@@ -208,12 +245,15 @@ export default function Map({
       marker.addTo(layerGroup.current);
     });
 
-    // Marcador de início
+    // Marcador de início (bolinha azul - padrão Google Maps)
     if (startPoint) {
-      L.marker([startPoint.latitude, startPoint.longitude], { icon: startIcon })
+      L.marker([startPoint.latitude, startPoint.longitude], {
+        icon: createOriginIcon(),
+        zIndexOffset: 1000,
+      })
         .bindPopup(`
           <div style="font-family: Inter, sans-serif; padding: 4px;">
-            <strong style="color: #10b981; font-size: 14px;">📍 Ponto de Partida</strong><br/>
+            <strong style="color: #4285f4; font-size: 14px;">📍 Você está aqui</strong><br/>
             <span style="color: #333; font-weight: 500;">${startPoint.name || 'Origem'}</span>
           </div>
         `)
@@ -221,12 +261,15 @@ export default function Map({
       bounds.extend([startPoint.latitude, startPoint.longitude]);
     }
 
-    // Marcador de destino
+    // Marcador de destino (pin vermelho - padrão Google Maps)
     if (endPoint) {
-      L.marker([endPoint.latitude, endPoint.longitude], { icon: endIcon })
+      L.marker([endPoint.latitude, endPoint.longitude], {
+        icon: createDestinationIcon(),
+        zIndexOffset: 999,
+      })
         .bindPopup(`
           <div style="font-family: Inter, sans-serif; padding: 4px;">
-            <strong style="color: #f59e0b; font-size: 14px;">🎯 Destino</strong><br/>
+            <strong style="color: #EA4335; font-size: 14px;">🎯 Destino</strong><br/>
             <span style="color: #333; font-weight: 500;">${endPoint.name || 'Destino'}</span>
           </div>
         `)
@@ -234,44 +277,72 @@ export default function Map({
       bounds.extend([endPoint.latitude, endPoint.longitude]);
     }
 
-    // Desenhar linhas da rota
-    if (routes.length > 0 && startPoint && endPoint) {
-      const route = routes[0];
-      const routePoints = [];
+    // ========================================================================
+    // Desenhar rota — SEMPRE (quando há origem e destino)
+    // ========================================================================
+    if (startPoint && endPoint) {
+      let geometryToDraw = routeGeometry;
 
-      routePoints.push([startPoint.latitude, startPoint.longitude]);
-      if (route.waypoints && route.waypoints.length > 0) {
-        route.waypoints.forEach((wp) => {
-          routePoints.push([wp.latitude, wp.longitude]);
-        });
+      // Valida a geometria: precisa ter pontos
+      const isValidGeometry = geometryToDraw && geometryToDraw.length > 1;
+
+      if (!isValidGeometry) {
+        console.log('⚠️ Sem geometria OSRM, gerando linha reta local');
+        geometryToDraw = [
+          [startPoint.latitude, startPoint.longitude],
+          [endPoint.latitude, endPoint.longitude],
+        ];
       }
-      routePoints.push([endPoint.latitude, endPoint.longitude]);
 
-      // Sombra
-      L.polyline(routePoints, {
-        color: '#fbc02d',
-        weight: 8,
-        opacity: 0.4,
-        smoothFactor: 1,
+      console.log('🎨 Desenhando rota com', geometryToDraw.length, 'pontos');
+
+      // 1. Contorno branco (fundo)
+      L.polyline(geometryToDraw, {
+        color: '#ffffff',
+        weight: 10,
+        opacity: 1,
+        lineCap: 'round',
+        lineJoin: 'round',
       }).addTo(layerGroup.current);
 
-      // Linha principal
-      L.polyline(routePoints, {
-        color: '#1a237e',
-        weight: 5,
-        opacity: 0.9,
-        smoothFactor: 1,
+      // 2. Linha azul principal (padrão Google Maps)
+      L.polyline(geometryToDraw, {
+        color: '#4285f4',
+        weight: 6,
+        opacity: 1,
+        lineCap: 'round',
+        lineJoin: 'round',
       }).addTo(layerGroup.current);
-    }
 
-    // Ajustar zoom para enquadrar rota se houver partida e destino
-    if (startPoint && endPoint && bounds.isValid()) {
-      mapInstance.current.fitBounds(bounds, {
-        padding: [90, 90],
-        maxZoom: 18,
-      });
+      // 3. Bolinhas azuis intermediárias
+      const totalPoints = geometryToDraw.length;
+      if (totalPoints > 4) {
+        const step = Math.max(2, Math.floor(totalPoints / 6));
+        for (let i = step; i < totalPoints - 1; i += step) {
+          L.circleMarker(geometryToDraw[i], {
+            radius: 5,
+            fillColor: '#4285f4',
+            color: '#ffffff',
+            weight: 2,
+            opacity: 1,
+            fillOpacity: 1,
+          }).addTo(layerGroup.current);
+        }
+      }
+
+      // 4. Ajusta zoom para origem + destino sem sair do campus
+      const routeBounds = L.latLngBounds([
+        [startPoint.latitude, startPoint.longitude],
+        [endPoint.latitude, endPoint.longitude],
+      ]);
+      if (routeBounds.isValid()) {
+        // Combina os limites da rota com os limites do campus
+        const campusBounds = L.latLngBounds(UNAERP_POLYGON);
+        const finalBounds = routeBounds.extend(campusBounds);
+        mapInstance.current.fitBounds(finalBounds, { padding: [80, 80], maxZoom: 17 });
+      }
     }
-  }, [startPoint, endPoint, routes, pois, onSelectOrigin, onSelectDestination, onOpenStreetView, onOpenPanorama]);
+  }, [startPoint, endPoint, routes, selectedRoute, routeGeometry, pois, onSelectOrigin, onSelectDestination, onOpenStreetView, onOpenPanorama]);
 
   return (
     <div className="relative w-full h-full">
@@ -282,19 +353,10 @@ export default function Map({
         aria-label="Mapa interativo do Campus UNAERP"
       />
 
-      {/* Botões flutuantes para Tour 360° e Street View */}
+      {/* Botão flutuante para Street View */}
       <div className="absolute bottom-6 left-4 z-[999] flex items-center gap-2">
         <button
-          onClick={() => onOpenPanorama && onOpenPanorama(endPoint || startPoint || pois[0])}
-          className="glass px-3.5 py-2.5 rounded-xl shadow-lg border border-unaerp-yellow/60 hover:bg-unaerp-yellow hover:text-unaerp-blue text-unaerp-blue font-bold text-xs flex items-center gap-1.5 transition active:scale-95 bg-white/95"
-          title="Abrir Tour Virtual 360° com fotos do campus"
-        >
-          <Camera size={16} className="text-unaerp-yellow-dark" />
-          <span>Tour 360°</span>
-        </button>
-
-        <button
-          onClick={() => onOpenStreetView && onOpenStreetView(endPoint || startPoint || { name: 'UNAERP Campus', latitude: -21.20022, longitude: -47.77805 })}
+          onClick={() => onOpenStreetView && onOpenStreetView(endPoint || startPoint || { name: 'UNAERP Campus', latitude: -21.2014, longitude: -47.7790 })}
           className="glass px-3.5 py-2.5 rounded-xl shadow-lg border border-unaerp-blue/20 hover:bg-unaerp-blue hover:text-white text-unaerp-blue font-semibold text-xs flex items-center gap-1.5 transition active:scale-95 bg-white/95"
           title="Ver Entradas no Google Street View"
         >

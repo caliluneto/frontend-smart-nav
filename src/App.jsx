@@ -1,12 +1,12 @@
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useEffect } from 'react';
 import Map from './components/Map';
 import SearchBar from './components/SearchBar';
 import RoutePanel from './components/RoutePanel';
 import AccessibilityMenu from './components/AccessibilityMenu';
 import StreetViewModal from './components/StreetViewModal';
-import PanoramaViewer from './components/PanoramaViewer';
-import { calculateRoute, UNAERP_CAMPUS_POIS } from './services/api';
-import { getPanoramaForPOI } from './services/panoramaService';
+// import PanoramaViewer from './components/PanoramaViewer'; // Temporariamente desabilitado (Three.js)
+import { calculateRoute, getRouteGeometry, UNAERP_CAMPUS_POIS } from './services/api';
+// import { getPanoramaForPOI } from './services/panoramaService'; // Temporariamente desabilitado
 
 // ============================================================================
 // App — Campus Smart Navigation UNAERP
@@ -19,13 +19,14 @@ export default function App() {
   const [selectedRoute, setSelectedRoute] = useState(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
+  const [routeGeometry, setRouteGeometry] = useState(null);
 
   // State do Street View 360° (Google)
   const [streetViewOpen, setStreetViewOpen] = useState(false);
   const [streetViewLocation, setStreetViewLocation] = useState(null);
 
-  // State do Tour Virtual 360° (PhotoSphereViewer / Fotos do Campus)
-  const [openPanorama, setOpenPanorama] = useState(null);
+  // State do Tour Virtual 360° (desabilitado temporariamente)
+  // const [openPanorama, setOpenPanorama] = useState(null);
 
   // Preferências de acessibilidade
   const [a11yPrefs, setA11yPrefs] = useState({
@@ -43,29 +44,25 @@ export default function App() {
     setStreetViewOpen(false);
   }, []);
 
-  // Abertura do Panorama 360° personalizado do campus
-  const handleOpenPanorama = useCallback((poi) => {
-    const target = poi || destination || origin || UNAERP_CAMPUS_POIS[0];
-    const pano = getPanoramaForPOI(target);
-    if (pano) {
-      setOpenPanorama(pano);
-    }
-  }, [destination, origin]);
-
-  const handleNavigatePanorama = useCallback((poiId) => {
-    setOpenPanorama(null);
-    const nextPoi = UNAERP_CAMPUS_POIS.find((p) => p.id === poiId);
-    if (nextPoi) {
-      setTimeout(() => {
-        const nextPano = getPanoramaForPOI(nextPoi);
-        if (nextPano) setOpenPanorama(nextPano);
-      }, 250);
-    }
-  }, []);
+  // Panorama 360° desabilitado temporariamente (sem fotos no Supabase Storage)
+  // const handleOpenPanorama = useCallback((poi) => { ... }, [destination, origin]);
+  // const handleNavigatePanorama = useCallback((poiId) => { ... }, []);
 
   // Calcular rota
   const handleCalculateRoute = useCallback(async () => {
     if (!origin || !destination) return;
+
+    // Validação: origem e destino não podem ser iguais
+    const sameAsOrigin =
+      (origin.id && destination.id && origin.id === destination.id) ||
+      (origin.name && destination.name && origin.name.trim().toLowerCase() === destination.name.trim().toLowerCase()) ||
+      (Math.abs(origin.latitude - destination.latitude) < 0.00001 &&
+       Math.abs(origin.longitude - destination.longitude) < 0.00001);
+
+    if (sameAsOrigin) {
+      setError('Origem e destino não podem ser o mesmo local');
+      return;
+    }
 
     setLoading(true);
     setError(null);
@@ -97,6 +94,16 @@ export default function App() {
 
       if (foundRoutes.length > 0) {
         setSelectedRoute(foundRoutes[0]);
+
+        // Buscar geometria da rota local dentro do campus
+        const geometry = await getRouteGeometry(
+          { latitude: origin.latitude, longitude: origin.longitude },
+          { latitude: destination.latitude, longitude: destination.longitude },
+          { routeType: foundRoutes[0]?.type || 'balanced' }
+        );
+        if (geometry) {
+          setRouteGeometry(geometry);
+        }
       } else {
         setError('Nenhuma rota encontrada para os pontos selecionados.');
       }
@@ -108,9 +115,25 @@ export default function App() {
     }
   }, [origin, destination, a11yPrefs]);
 
+  // Atualizar geometria quando o usuário troca de rota selecionada
+  useEffect(() => {
+    const updateGeometry = async () => {
+      if (selectedRoute && origin && destination) {
+        const geometry = await getRouteGeometry(
+          { latitude: origin.latitude, longitude: origin.longitude },
+          { latitude: destination.latitude, longitude: destination.longitude },
+          { routeType: selectedRoute.type || 'balanced' }
+        );
+        if (geometry) setRouteGeometry(geometry);
+      }
+    };
+    updateGeometry();
+  }, [selectedRoute, origin, destination]);
+
   const handleCloseRoutes = () => {
     setRoutes([]);
     setSelectedRoute(null);
+    setRouteGeometry(null);
   };
 
   return (
@@ -119,12 +142,13 @@ export default function App() {
       <Map
         startPoint={origin}
         endPoint={destination}
-        routes={selectedRoute ? [selectedRoute] : []}
+        routes={routes}
+        selectedRoute={selectedRoute}
+        routeGeometry={routeGeometry}
         pois={UNAERP_CAMPUS_POIS}
         onSelectOrigin={setOrigin}
         onSelectDestination={setDestination}
         onOpenStreetView={handleOpenStreetView}
-        onOpenPanorama={handleOpenPanorama}
       />
 
       {/* Camada 2: Barra de busca flutuante */}
@@ -146,7 +170,6 @@ export default function App() {
           destination={destination}
           onClose={handleCloseRoutes}
           onSelectRoute={setSelectedRoute}
-          onOpenPanorama={handleOpenPanorama}
         />
       )}
 
@@ -160,14 +183,14 @@ export default function App() {
         location={streetViewLocation}
       />
 
-      {/* Camada 6: Tour Virtual 360° (PhotoSphereViewer / Fotos do Campus) */}
-      {openPanorama && (
+      {/* Camada 6: Tour Virtual 360° (desabilitado temporariamente) */}
+      {/* {openPanorama && (
         <PanoramaViewer
           panorama={openPanorama}
           onClose={() => setOpenPanorama(null)}
           onNavigate={handleNavigatePanorama}
         />
-      )}
+      )} */}
 
       {/* Toast de erro / notificação */}
       {error && (

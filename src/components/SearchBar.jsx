@@ -115,25 +115,27 @@ export default function SearchBar({
     return map[type] || '📍';
   };
 
-  // Pontos de atalho rápido
+  // Pontos de atalho rápido (IDs devem corresponder aos de UNAERP_CAMPUS_POIS)
   const quickPois = [
-    { label: 'Portaria', id: 'unaerp-portaria-1' },
-    { label: 'Biblioteca', id: 'unaerp-biblioteca' },
-    { label: 'Bloco A', id: 'unaerp-bloco-a' },
-    { label: 'Bloco B', id: 'unaerp-bloco-b' },
-    { label: 'Bloco C', id: 'unaerp-bloco-c' },
-    { label: 'Cantina', id: 'unaerp-cantina' },
+    { label: 'Portaria', id: 'portaria-principal' },
+    { label: 'Biblioteca', id: 'bloco-e' },
+    { label: 'Bloco A', id: 'bloco-a' },
+    { label: 'Bloco B', id: 'bloco-b' },
+    { label: 'Cantina', id: 'cantina' },
+    { label: 'Hospital', id: 'hospital' },
   ];
 
-  const handleQuickSelect = (poiId) => {
-    const found = UNAERP_CAMPUS_POIS.find((p) => p.id === poiId);
+  const handleQuickSelect = (poiId, label) => {
+    // Busca pelo ID exato primeiro, depois por nome
+    const found = UNAERP_CAMPUS_POIS.find((p) => p.id === poiId)
+      || UNAERP_CAMPUS_POIS.find((p) =>
+        p.name.toLowerCase().includes(label.toLowerCase())
+      );
+
     if (!found) return;
 
-    if (!selectedOrigin) {
-      selectFrom(found);
-    } else {
-      selectTo(found);
-    }
+    // Sempre seleciona como destino
+    selectTo(found);
   };
 
   return (
@@ -302,7 +304,7 @@ export default function SearchBar({
             {quickPois.map((qp) => (
               <button
                 key={qp.id}
-                onClick={() => handleQuickSelect(qp.id)}
+                onClick={() => handleQuickSelect(qp.id, qp.label)}
                 className="px-2 py-0.5 rounded-md bg-gray-100/80 hover:bg-unaerp-blue hover:text-white text-gray-700 transition whitespace-nowrap text-[11px]"
               >
                 {qp.label}

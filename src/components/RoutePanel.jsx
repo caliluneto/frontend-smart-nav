@@ -3,7 +3,7 @@ import {
   Clock, Ruler, Shield, Accessibility, ChevronUp, ChevronDown,
   Zap, TreePine, Scale, X, Navigation,
 } from 'lucide-react';
-import PanoramaButton from './PanoramaButton';
+// import PanoramaButton from './PanoramaButton'; // Temporariamente desabilitado (Photo Sphere)
 
 // ============================================================================
 // RoutePanel — Bottom sheet com rotas calculadas
@@ -220,17 +220,11 @@ export default function RoutePanel({
               </div>
             )}
 
-            {/* Destino: Ver em 360° */}
+            {/* Destino info */}
             {destination && (
-              <div className="mb-4 p-3 bg-unaerp-blue/5 rounded-2xl border border-unaerp-blue/15 flex items-center justify-between gap-3">
-                <div className="min-w-0">
-                  <p className="text-xs font-bold text-unaerp-blue">Destino: {destination.name}</p>
-                  <p className="text-[11px] text-gray-500 truncate">Visualize o local antes de caminhar</p>
-                </div>
-                <PanoramaButton
-                  poi={destination}
-                  onClick={() => onOpenPanorama?.(destination)}
-                />
+              <div className="mb-4 p-3 bg-unaerp-blue/5 rounded-2xl border border-unaerp-blue/15">
+                <p className="text-xs font-bold text-unaerp-blue">Destino: {destination.name}</p>
+                <p className="text-[11px] text-gray-500 truncate">{destination.description || 'Visualize o local antes de caminhar'}</p>
               </div>
             )}
 

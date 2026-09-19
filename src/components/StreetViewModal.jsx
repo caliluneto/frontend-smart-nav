@@ -8,31 +8,24 @@ import { Eye, X, ExternalLink, Compass, MapPin, Satellite, Info } from 'lucide-r
 const VERIFIED_STREETVIEW_ENTRANCES = [
   {
     id: 'portaria-principal',
-    name: 'Portaria Principal (Av. Costábile Romano)',
-    latitude: -21.20038,
-    longitude: -47.77785,
-    description: 'Entrada principal com guarita, rampa e fachada clássica da UNAERP',
+    name: 'Portaria Principal UNAERP',
+    latitude: -21.2018,
+    longitude: -47.7808,
+    description: 'Entrada principal — Av. Costábile Romano',
   },
   {
-    id: 'fachada-unaerp',
-    name: 'Av. Costábile Romano (Fachada Central)',
-    latitude: -21.20150,
-    longitude: -47.77760,
-    description: 'Vista panorâmica da avenida em frente aos blocos universitários',
+    id: 'campus-central',
+    name: 'UNAERP Ribeirão Preto',
+    latitude: -21.2010,
+    longitude: -47.7792,
+    description: 'Vista geral do campus',
   },
   {
     id: 'hospital-bonini',
-    name: 'Hospital Electro Bonini / Acesso Sul',
-    latitude: -21.20230,
-    longitude: -47.77800,
-    description: 'Entrada do hospital universitário e estacionamento sul',
-  },
-  {
-    id: 'portaria-oeste',
-    name: 'Portaria Oeste (Rua Alfredo Benzoni)',
-    latitude: -21.20090,
-    longitude: -47.78070,
-    description: 'Acesso alternativo para pedestres e clínicas no lado oeste',
+    name: 'Acesso Sul UNAERP',
+    latitude: -21.2006,
+    longitude: -47.7803,
+    description: 'Entrada pelo Hospital Electro Bonini',
   },
 ];
 
@@ -81,12 +74,22 @@ export default function StreetViewModal({ isOpen, onClose, location }) {
   const poiLng = location?.longitude || -47.7792;
   const satelliteEmbedUrl = `https://maps.google.com/maps?q=${poiLat},${poiLng}&t=k&z=19&ie=UTF8&iwloc=&output=embed`;
 
-  // Link para abrir diretamente no Google Maps com busca inteligente (sem tela preta)
-  const targetName = location?.name ? `${location.name} UNAERP Ribeirão Preto` : 'UNAERP Campus Ribeirânia Ribeirão Preto';
-  const externalMapsUrl = `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(targetName)}`;
+  // Link para abrir diretamente no Google Maps — por coordenadas para sempre acertar
+  const externalMapsUrl = (svLat && svLng)
+    ? `https://www.google.com/maps/@${svLat},${svLng},17z`
+    : 'https://www.google.com/maps/search/?api=1&query=UNAERP+Ribeir%C3%A3o+Preto';
 
   return (
     <div className="fixed inset-0 z-[2000] flex items-center justify-center p-2 sm:p-5 animate-fade-in bg-black/75 backdrop-blur-sm">
+      {/* Botão fechar — z-index alto para ficar acima do iframe */}
+      <button
+        onClick={onClose}
+        className="fixed top-4 right-4 z-[9999] bg-white text-unaerp-blue p-3 rounded-full shadow-2xl hover:bg-gray-100 transition"
+        aria-label="Fechar Street View"
+        title="Fechar"
+      >
+        <X size={24} strokeWidth={3} />
+      </button>
       <div className="relative w-full max-w-4xl bg-white rounded-2xl shadow-2xl overflow-hidden flex flex-col max-h-[92vh] border border-white/20">
         {/* Cabeçalho */}
         <div className="bg-unaerp-blue px-4 py-3 flex items-center justify-between text-white">
