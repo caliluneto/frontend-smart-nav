@@ -83,7 +83,7 @@ export default function RoutePanel({
 
   return (
     <div
-      className="fixed bottom-0 left-0 right-0 z-[1000] flex flex-col transition-[height] duration-200 ease-out bg-white rounded-t-3xl shadow-2xl"
+      className="fixed bottom-0 left-0 right-0 z-[1500] flex flex-col transition-[height] duration-200 ease-out bg-white rounded-t-3xl shadow-2xl"
       style={{ height: `${sheetHeight}vh` }}
     >
       {/* Handle de arrastar */}
@@ -98,7 +98,7 @@ export default function RoutePanel({
       {/* Header */}
       <div className="px-4 pb-2 flex items-center justify-between">
         <h2 className="text-base font-bold text-unaerp-blue">
-          {routes.length} rota{routes.length > 1 ? 's' : ''}
+          {routes.length} rota{routes.length > 1 ? 's' : ''} encontrada{routes.length > 1 ? 's' : ''}
         </h2>
         <div className="flex items-center gap-1">
           <button
@@ -114,7 +114,7 @@ export default function RoutePanel({
           <button
             onClick={onClose}
             className="p-1.5 hover:bg-gray-100 rounded-full transition"
-            aria-label="Recolher rotas"
+            aria-label="Fechar painel de rotas"
           >
             <ChevronDown size={20} className="text-gray-500" />
           </button>

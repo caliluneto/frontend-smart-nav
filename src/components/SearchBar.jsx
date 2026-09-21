@@ -12,7 +12,6 @@ export default function SearchBar({
   selectedOrigin,
   selectedDestination,
   loading,
-  onOpenStreetView,
   shouldCollapse,
 }) {
   const [isExpanded, setIsExpanded] = useState(false);

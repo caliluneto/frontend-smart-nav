@@ -1,7 +1,6 @@
 import { useEffect, useRef } from 'react';
 import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
-import { Eye, Camera } from 'lucide-react';
 import { UNAERP_CAMPUS_POIS } from '../services/api';
 
 // Fix para ícones padrão do Leaflet
@@ -53,7 +52,42 @@ const createIcon = (color, emoji = '📍', size = 36) => {
 const startIcon = createIcon('#10b981', '🟢', 40);
 const endIcon = createIcon('#fbc02d', '🎯', 40);
 
-// Ícone azul (origem - padrão Google Maps)
+// Ícone azul com pulso animado (localização real GPS do celular)
+const createUserLocationIcon = () => L.divIcon({
+  className: 'user-gps-marker',
+  html: `
+    <div style="
+      position: relative;
+      width: 28px;
+      height: 28px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    ">
+      <div style="
+        position: absolute;
+        width: 28px;
+        height: 28px;
+        background: rgba(26, 115, 232, 0.4);
+        border-radius: 50%;
+        animation: pulse-ring 2s cubic-bezier(0.215, 0.61, 0.355, 1) infinite;
+      "></div>
+      <div style="
+        position: relative;
+        width: 14px;
+        height: 14px;
+        background: #1a73e8;
+        border: 2.5px solid #ffffff;
+        border-radius: 50%;
+        box-shadow: 0 2px 6px rgba(0,0,0,0.4);
+      "></div>
+    </div>
+  `,
+  iconSize: [28, 28],
+  iconAnchor: [14, 14],
+});
+
+// Ícone azul (origem da rota - ponto de partida fixado)
 const createOriginIcon = () => L.divIcon({
   className: 'origin-marker',
   html: `
@@ -68,7 +102,7 @@ const createOriginIcon = () => L.divIcon({
         left: 0;
         width: 24px;
         height: 24px;
-        background: #4285f4;
+        background: #10b981;
         border: 3px solid white;
         border-radius: 50%;
         box-shadow: 0 2px 6px rgba(0,0,0,0.4);
@@ -118,14 +152,13 @@ const getPoiEmoji = (type) => {
 export default function Map({
   startPoint,
   endPoint,
+  userLocation,
   routes = [],
   selectedRoute,
   routeGeometry,
   pois = UNAERP_CAMPUS_POIS,
   onSelectOrigin,
   onSelectDestination,
-  onOpenStreetView,
-  onOpenPanorama,
 }) {
   const mapContainer = useRef(null);
   const mapInstance = useRef(null);
@@ -278,19 +311,40 @@ export default function Map({
     };
     window.addEventListener('close-poi-popup', closePopupHandler);
 
-    // Marcador de início (bolinha azul - padrão Google Maps)
-    if (startPoint) {
-      L.marker([startPoint.latitude, startPoint.longitude], {
-        icon: createOriginIcon(),
-        zIndexOffset: 1000,
+    // Marcador de localização real do usuário (GPS do celular com pulso animado)
+    if (userLocation) {
+      L.marker([userLocation.latitude, userLocation.longitude], {
+        icon: createUserLocationIcon(),
+        zIndexOffset: 1002,
       })
         .bindPopup(`
-          <div style="font-family: Inter, sans-serif; padding: 4px;">
-            <strong style="color: #4285f4; font-size: 14px;">📍 Você está aqui</strong><br/>
-            <span style="color: #333; font-weight: 500;">${startPoint.name || 'Origem'}</span>
+          <div style="font-family: Inter, sans-serif; padding: 4px; text-align: center;">
+            <strong style="color: #1a73e8; font-size: 13px;">📍 Sua localização real</strong><br/>
+            <span style="color: #666; font-size: 11px;">GPS ativo</span>
           </div>
         `)
         .addTo(layerGroup.current);
+    }
+
+    // Marcador de início / ponto de partida
+    if (startPoint) {
+      const isSameAsGps = userLocation &&
+        Math.abs(startPoint.latitude - userLocation.latitude) < 0.00005 &&
+        Math.abs(startPoint.longitude - userLocation.longitude) < 0.00005;
+
+      if (!isSameAsGps) {
+        L.marker([startPoint.latitude, startPoint.longitude], {
+          icon: createOriginIcon(),
+          zIndexOffset: 1001,
+        })
+          .bindPopup(`
+            <div style="font-family: Inter, sans-serif; padding: 4px;">
+              <strong style="color: #10b981; font-size: 14px;">🟢 Ponto de Partida</strong><br/>
+              <span style="color: #333; font-weight: 500;">${startPoint.name || 'Origem'}</span>
+            </div>
+          `)
+          .addTo(layerGroup.current);
+      }
       bounds.extend([startPoint.latitude, startPoint.longitude]);
     }
 
@@ -384,7 +438,7 @@ export default function Map({
     return () => {
       window.removeEventListener('close-poi-popup', closePopupHandler);
     };
-  }, [startPoint, endPoint, routes, selectedRoute, routeGeometry, pois, onSelectOrigin, onSelectDestination, onOpenStreetView, onOpenPanorama]);
+  }, [startPoint, endPoint, userLocation, routes, selectedRoute, routeGeometry, pois, onSelectOrigin, onSelectDestination]);
 
   return (
     <div className="relative w-full h-full">
@@ -394,18 +448,6 @@ export default function Map({
         role="region"
         aria-label="Mapa interativo do Campus UNAERP"
       />
-
-      {/* Botão flutuante para Street View */}
-      <div className="absolute bottom-6 left-4 z-[999] flex items-center gap-2">
-        <button
-          onClick={() => onOpenStreetView && onOpenStreetView(endPoint || startPoint || { name: 'UNAERP Campus', latitude: -21.2014, longitude: -47.7790 })}
-          className="glass px-3.5 py-2.5 rounded-xl shadow-lg border border-unaerp-blue/20 hover:bg-unaerp-blue hover:text-white text-unaerp-blue font-semibold text-xs flex items-center gap-1.5 transition active:scale-95 bg-white/95"
-          title="Ver Entradas no Google Street View"
-        >
-          <Eye size={16} className="text-unaerp-yellow" />
-          <span>Street View</span>
-        </button>
-      </div>
     </div>
   );
 }

@@ -3,18 +3,26 @@ import Map from './components/Map';
 import SearchBar from './components/SearchBar';
 import RoutePanel from './components/RoutePanel';
 import AccessibilityMenu from './components/AccessibilityMenu';
-import StreetViewModal from './components/StreetViewModal';
 import POIDetailModal from './components/POIDetailModal';
-// import PanoramaViewer from './components/PanoramaViewer'; // Temporariamente desabilitado (Three.js)
 import { calculateRoute, getRouteGeometry, UNAERP_CAMPUS_POIS } from './services/api';
-// import { getPanoramaForPOI } from './services/panoramaService'; // Temporariamente desabilitado
 
 // ============================================================================
 // App — Campus Smart Navigation UNAERP
 // ============================================================================
 export default function App() {
+  // State de localização do usuário via GPS
+  const [userLocation, setUserLocation] = useState(null);
+  const [locating, setLocating] = useState(false);
+  const [originOverride, setOriginOverride] = useState(null);
+
+  // Origem efetiva para navegação: ponto fixado manualmente ou GPS real
+  const effectiveOrigin = originOverride || (userLocation ? {
+    ...userLocation,
+    name: 'Sua Localização',
+    id: 'user-gps',
+  } : null);
+
   // State de navegação
-  const [origin, setOrigin] = useState(null);
   const [destination, setDestination] = useState(null);
   const [routes, setRoutes] = useState([]);
   const [selectedRoute, setSelectedRoute] = useState(null);
@@ -24,43 +32,93 @@ export default function App() {
   const [shouldCollapseSearch, setShouldCollapseSearch] = useState(false);
   const [detailPoi, setDetailPoi] = useState(null);
 
-  // State do Street View 360° (Google)
-  const [streetViewOpen, setStreetViewOpen] = useState(false);
-  const [streetViewLocation, setStreetViewLocation] = useState(null);
-
-  // State do Tour Virtual 360° (desabilitado temporariamente)
-  // const [openPanorama, setOpenPanorama] = useState(null);
-
   // Preferências de acessibilidade
   const [a11yPrefs, setA11yPrefs] = useState({
     wheelchairAccessible: false,
     avoidStairs: false,
   });
 
-  // Abertura do Street View
-  const handleOpenStreetView = useCallback((loc) => {
-    setStreetViewLocation(loc || destination || origin || UNAERP_CAMPUS_POIS[0]);
-    setStreetViewOpen(true);
-  }, [destination, origin]);
+  // ============================================================================
+  // GPS Real — Obter localização do celular via Geolocation API
+  // ============================================================================
+  const getUserLocation = useCallback(() => {
+    if (!navigator.geolocation) {
+      console.warn('Geolocalização não suportada neste navegador');
+      setError('Seu navegador não suporta geolocalização');
+      return;
+    }
 
-  const handleCloseStreetView = useCallback(() => {
-    setStreetViewOpen(false);
+    setLocating(true);
+    setError(null);
+
+    navigator.geolocation.getCurrentPosition(
+      (position) => {
+        const { latitude, longitude } = position.coords;
+        console.log('📍 Localização GPS obtida:', latitude, longitude);
+        setUserLocation({ latitude, longitude });
+        setLocating(false);
+      },
+      (err) => {
+        console.warn('Erro GPS:', err.message);
+        setLocating(false);
+        // Fallback: localização padrão (mas avisa o usuário)
+        if (err.code === err.PERMISSION_DENIED) {
+          setError('Permissão de localização negada. Usando localização aproximada do campus.');
+        } else if (err.code === err.POSITION_UNAVAILABLE) {
+          setError('Não foi possível obter sua localização. Usando localização aproximada.');
+        } else if (err.code === err.TIMEOUT) {
+          setError('Tempo esgotado ao buscar localização.');
+        }
+        // Fallback para o centro do campus
+        setUserLocation({
+          latitude: -21.2014,
+          longitude: -47.7790,
+        });
+      },
+      {
+        enableHighAccuracy: true,
+        timeout: 10000,
+        maximumAge: 60000,
+      }
+    );
   }, []);
 
-  // Panorama 360° desabilitado temporariamente (sem fotos no Supabase Storage)
-  // const handleOpenPanorama = useCallback((poi) => { ... }, [destination, origin]);
-  // const handleNavigatePanorama = useCallback((poiId) => { ... }, []);
+  // Inicialização: solicitar permissão de localização GPS automaticamente
+  useEffect(() => {
+    getUserLocation();
+  }, [getUserLocation]);
 
-  // Calcular rota
-  const handleCalculateRoute = useCallback(async () => {
-    if (!origin || !destination) return;
+  // Log de depuração do estado de rotas
+  useEffect(() => {
+    console.log('🔍 Estado de rotas:', { routesCount: routes.length, hasSelectedRoute: !!selectedRoute });
+  }, [routes, selectedRoute]);
+
+  // ============================================================================
+  // Calcular rota diretamente ao selecionar destino
+  // ============================================================================
+  const handleSelectDestination = useCallback(async (poi) => {
+    if (!poi) {
+      setDestination(null);
+      setRoutes([]);
+      setSelectedRoute(null);
+      setRouteGeometry(null);
+      return;
+    }
+
+    setDestination(poi);
+
+    const fromPoint = effectiveOrigin;
+    if (!fromPoint) {
+      console.log('ℹ️ Aguardando origem para calcular rota');
+      return;
+    }
 
     // Validação: origem e destino não podem ser iguais
     const sameAsOrigin =
-      (origin.id && destination.id && origin.id === destination.id) ||
-      (origin.name && destination.name && origin.name.trim().toLowerCase() === destination.name.trim().toLowerCase()) ||
-      (Math.abs(origin.latitude - destination.latitude) < 0.00001 &&
-       Math.abs(origin.longitude - destination.longitude) < 0.00001);
+      (fromPoint.id && poi.id && fromPoint.id === poi.id) ||
+      (fromPoint.name && poi.name && fromPoint.name.trim().toLowerCase() === poi.name.trim().toLowerCase()) ||
+      (Math.abs(fromPoint.latitude - poi.latitude) < 0.00001 &&
+       Math.abs(fromPoint.longitude - poi.longitude) < 0.00001);
 
     if (sameAsOrigin) {
       setError('Origem e destino não podem ser o mesmo local');
@@ -74,16 +132,16 @@ export default function App() {
     try {
       const result = await calculateRoute(
         {
-          id: origin.id,
-          name: origin.name,
-          latitude: origin.latitude,
-          longitude: origin.longitude,
+          id: fromPoint.id || 'origin',
+          name: fromPoint.name || 'Minha Localização',
+          latitude: fromPoint.latitude,
+          longitude: fromPoint.longitude,
         },
         {
-          id: destination.id,
-          name: destination.name,
-          latitude: destination.latitude,
-          longitude: destination.longitude,
+          id: poi.id,
+          name: poi.name,
+          latitude: poi.latitude,
+          longitude: poi.longitude,
         },
         {
           routeType: 'balanced',
@@ -93,6 +151,7 @@ export default function App() {
       );
 
       const foundRoutes = result.routes || [];
+      console.log('📍 Rotas obtidas:', foundRoutes.length);
       setRoutes(foundRoutes);
 
       if (foundRoutes.length > 0) {
@@ -104,8 +163,8 @@ export default function App() {
 
         // Buscar geometria da rota local dentro do campus
         const geometry = await getRouteGeometry(
-          { latitude: origin.latitude, longitude: origin.longitude },
-          { latitude: destination.latitude, longitude: destination.longitude },
+          { latitude: fromPoint.latitude, longitude: fromPoint.longitude },
+          { latitude: poi.latitude, longitude: poi.longitude },
           { routeType: foundRoutes[0]?.type || 'balanced' }
         );
         if (geometry) {
@@ -120,14 +179,20 @@ export default function App() {
     } finally {
       setLoading(false);
     }
-  }, [origin, destination, a11yPrefs]);
+  }, [effectiveOrigin, a11yPrefs]);
 
-  // Atualizar geometria quando o usuário troca de rota selecionada
+  // Recalcular rota manual (via botão do SearchBar)
+  const handleCalculateRoute = useCallback(async () => {
+    if (!destination) return;
+    await handleSelectDestination(destination);
+  }, [destination, handleSelectDestination]);
+
+  // Atualizar geometria quando o usuário troca de rota selecionada no RoutePanel
   useEffect(() => {
     const updateGeometry = async () => {
-      if (selectedRoute && origin && destination) {
+      if (selectedRoute && effectiveOrigin && destination) {
         const geometry = await getRouteGeometry(
-          { latitude: origin.latitude, longitude: origin.longitude },
+          { latitude: effectiveOrigin.latitude, longitude: effectiveOrigin.longitude },
           { latitude: destination.latitude, longitude: destination.longitude },
           { routeType: selectedRoute.type || 'balanced' }
         );
@@ -135,7 +200,7 @@ export default function App() {
       }
     };
     updateGeometry();
-  }, [selectedRoute, origin, destination]);
+  }, [selectedRoute, effectiveOrigin, destination]);
 
   const handleCloseRoutes = () => {
     setRoutes([]);
@@ -143,13 +208,15 @@ export default function App() {
     setRouteGeometry(null);
   };
 
-  // Listeners globais para eventos dos popups de POI
+  // ============================================================================
+  // Listeners globais para eventos dos POIs (popups e modal)
+  // ============================================================================
   useEffect(() => {
     const handlePoiPartir = (event) => {
       const poiId = event.detail;
       const poi = UNAERP_CAMPUS_POIS.find((p) => p.id === poiId);
       if (poi) {
-        setOrigin(poi);
+        setOriginOverride(poi);
         window.dispatchEvent(new CustomEvent('close-poi-popup'));
       }
     };
@@ -158,17 +225,17 @@ export default function App() {
       const poiId = event.detail;
       const poi = UNAERP_CAMPUS_POIS.find((p) => p.id === poiId);
       if (poi) {
-        setDestination(poi);
+        handleSelectDestination(poi);
         window.dispatchEvent(new CustomEvent('close-poi-popup'));
       }
     };
 
-    // Compat: manter poi-selected para popups antigos
+    // Compat: manter poi-selected para compatibilidade
     const handlePoiSelected = (event) => {
       const poiId = event.detail;
       const poi = UNAERP_CAMPUS_POIS.find((p) => p.id === poiId);
       if (poi) {
-        setDestination(poi);
+        handleSelectDestination(poi);
         window.dispatchEvent(new CustomEvent('close-poi-popup'));
       }
     };
@@ -192,11 +259,11 @@ export default function App() {
       window.removeEventListener('poi-selected', handlePoiSelected);
       window.removeEventListener('poi-detail', handlePoiDetail);
     };
-  }, []);
+  }, [handleSelectDestination]);
 
   return (
     <div className="relative w-full h-full overflow-hidden bg-gray-100">
-      {/* Header UNAERP */}
+      {/* Header UNAERP (sem Street View) */}
       <div className="fixed top-0 left-0 right-0 z-[999] bg-gradient-to-r from-unaerp-blue to-unaerp-blue-light shadow-lg">
         <div className="flex items-center justify-between py-2.5 px-4">
           <div className="flex items-center gap-2">
@@ -208,41 +275,49 @@ export default function App() {
               <p className="text-[10px] text-unaerp-yellow leading-tight">Navegação do Campus</p>
             </div>
           </div>
-          <button
-            onClick={() => handleOpenStreetView()}
-            className="px-3 py-1.5 rounded-lg text-xs font-medium text-white bg-white/15 hover:bg-white/25 flex items-center gap-1.5 transition"
-            title="Abrir Street View 360°"
-          >
-            📷 <span className="hidden sm:inline">Street View</span>
-          </button>
+          {locating && (
+            <span className="text-[11px] text-white/90 bg-white/10 px-2.5 py-1 rounded-full animate-pulse">
+              Buscando GPS...
+            </span>
+          )}
         </div>
       </div>
+
+      {/* Botão flutuante para ativar localização quando GPS ainda não foi obtido */}
+      {!userLocation && !locating && (
+        <button
+          onClick={getUserLocation}
+          className="fixed top-20 left-1/2 -translate-x-1/2 z-[997] bg-unaerp-blue text-white px-4 py-2.5 rounded-full shadow-2xl font-semibold text-xs flex items-center gap-2 transition hover:bg-unaerp-blue-dark active:scale-95 whitespace-nowrap border-2 border-white/20"
+          aria-label="Ativar minha localização"
+        >
+          📍 Ativar minha localização
+        </button>
+      )}
 
       {/* Camada 1: Mapa fullscreen */}
       <div className="fixed inset-0 w-full h-full">
         <Map
-          startPoint={origin}
+          startPoint={effectiveOrigin}
           endPoint={destination}
+          userLocation={userLocation}
           routes={routes}
           selectedRoute={selectedRoute}
           routeGeometry={routeGeometry}
           pois={UNAERP_CAMPUS_POIS}
-          onSelectOrigin={setOrigin}
-          onSelectDestination={setDestination}
-          onOpenStreetView={handleOpenStreetView}
+          onSelectOrigin={setOriginOverride}
+          onSelectDestination={handleSelectDestination}
         />
       </div>
 
       {/* Camada 2: Barra de busca compacta no topo */}
       <div className="fixed top-16 left-2 right-2 sm:top-20 sm:left-4 sm:right-4 sm:max-w-md sm:mx-auto z-[998]">
         <SearchBar
-          onSelectOrigin={setOrigin}
-          onSelectDestination={setDestination}
+          onSelectOrigin={setOriginOverride}
+          onSelectDestination={handleSelectDestination}
           onCalculateRoute={handleCalculateRoute}
-          selectedOrigin={origin}
+          selectedOrigin={effectiveOrigin}
           selectedDestination={destination}
           loading={loading}
-          onOpenStreetView={handleOpenStreetView}
           shouldCollapse={shouldCollapseSearch}
         />
       </div>
@@ -251,7 +326,7 @@ export default function App() {
       {routes.length > 0 && (
         <RoutePanel
           routes={routes}
-          origin={origin}
+          origin={effectiveOrigin}
           destination={destination}
           onClose={handleCloseRoutes}
           onSelectRoute={setSelectedRoute}
@@ -261,25 +336,18 @@ export default function App() {
       {/* Camada 4: Menu flutuante de acessibilidade (FAB) */}
       <AccessibilityMenu onPreferencesChange={setA11yPrefs} />
 
-      {/* Camada 5: Modal de Street View 360° (Google) */}
-      <StreetViewModal
-        isOpen={streetViewOpen}
-        onClose={handleCloseStreetView}
-        location={streetViewLocation}
-      />
-
-      {/* Camada 6: Modal de detalhes do POI (foto, descrição, ações) */}
+      {/* Camada 5: Modal de detalhes do POI (foto, descrição, ações) */}
       {detailPoi && (
         <POIDetailModal
           poi={detailPoi}
           onClose={() => setDetailPoi(null)}
           onNavigate={(poi) => {
             setDetailPoi(null);
-            setDestination(poi);
+            handleSelectDestination(poi);
           }}
           onSetOrigin={(poi) => {
             setDetailPoi(null);
-            setOrigin(poi);
+            setOriginOverride(poi);
           }}
         />
       )}
