@@ -7,7 +7,9 @@
 //   - GET  /health                 → health check
 // ============================================================================
 
-const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3000/api';
+const API_URL = import.meta.env?.VITE_API_URL || 'http://localhost:3000/api';
+
+import { CAMPUS_NODES, CAMPUS_EDGES, NETWORK_CONFIG, haversine } from '../data/campusNetwork.js';
 
 // ============================================================================
 // Pontos de Interesse (POIs) Oficiais do Campus UNAERP (Ribeirânia - Ribeirão Preto)
@@ -276,86 +278,199 @@ export const healthCheck = async () => {
 };
 
 // ============================================================================
-// Gerador de rota LOCAL — sempre dentro do campus
+// Roteamento sobre a rede de caminhos do campus
 // ============================================================================
 
-// Limites do campus (bounding box)
-const CAMPUS_BOUNDS_INTERNAL = {
-  minLat: -21.2045,
-  maxLat: -21.1985,
-  minLng: -47.7820,
-  maxLng: -47.7770,
+// Monta grafo de adjacência a partir das arestas
+const buildGraph = () => {
+  const graph = {};
+  Object.keys(CAMPUS_NODES).forEach((id) => {
+    graph[id] = [];
+  });
+
+  CAMPUS_EDGES.forEach(([a, b]) => {
+    const nodeA = CAMPUS_NODES[a];
+    const nodeB = CAMPUS_NODES[b];
+    if (!nodeA || !nodeB) return;
+
+    const distance = haversine(nodeA.lat, nodeA.lng, nodeB.lat, nodeB.lng);
+    graph[a].push({ node: b, distance });
+    graph[b].push({ node: a, distance });
+  });
+
+  return graph;
 };
 
-// Garante que um ponto está dentro do campus
-const clampToCampus = (lat, lng) => ({
-  lat: Math.max(CAMPUS_BOUNDS_INTERNAL.minLat, Math.min(CAMPUS_BOUNDS_INTERNAL.maxLat, lat)),
-  lng: Math.max(CAMPUS_BOUNDS_INTERNAL.minLng, Math.min(CAMPUS_BOUNDS_INTERNAL.maxLng, lng)),
-});
+// Encontra o nó mais próximo de uma coordenada (dentro do raio máximo)
+const findNearestNode = (lat, lng) => {
+  let nearest = null;
+  let minDistance = Infinity;
 
-/**
- * Gera uma rota visual dentro do campus.
- * Cria pontos interpolados com curvatura suave, sempre dentro dos limites.
- * As rotas são a pé e evitam sair do campus.
- */
+  Object.entries(CAMPUS_NODES).forEach(([id, node]) => {
+    const distance = haversine(lat, lng, node.lat, node.lng);
+    if (distance < minDistance) {
+      minDistance = distance;
+      nearest = id;
+    }
+  });
+
+  if (minDistance > NETWORK_CONFIG.maxSnapDistance) {
+    console.warn('⚠️ Nó mais próximo além do raio máximo:', minDistance.toFixed(0), 'm');
+  }
+
+  return { nodeId: nearest, distance: minDistance };
+};
+
+// Algoritmo de Dijkstra para encontrar o caminho mais curto
+const dijkstra = (graph, startId, endId) => {
+  const distances = {};
+  const previous = {};
+  const visited = new Set();
+  const unvisited = new Set(Object.keys(graph));
+
+  Object.keys(graph).forEach((id) => {
+    distances[id] = Infinity;
+    previous[id] = null;
+  });
+  distances[startId] = 0;
+
+  while (unvisited.size > 0) {
+    // Encontra o nó não visitado com menor distância
+    let current = null;
+    let minDist = Infinity;
+    unvisited.forEach((id) => {
+      if (distances[id] < minDist) {
+        minDist = distances[id];
+        current = id;
+      }
+    });
+
+    if (current === null || current === endId) break;
+
+    unvisited.delete(current);
+    visited.add(current);
+
+    graph[current].forEach((neighbor) => {
+      if (visited.has(neighbor.node)) return;
+      const newDist = distances[current] + neighbor.distance;
+      if (newDist < distances[neighbor.node]) {
+        distances[neighbor.node] = newDist;
+        previous[neighbor.node] = current;
+      }
+    });
+  }
+
+  // Reconstrói o caminho
+  const path = [];
+  let current = endId;
+  while (current !== null) {
+    path.unshift(current);
+    current = previous[current];
+  }
+
+  return { path, distance: distances[endId] };
+};
+
+// Calcula os pontos de uma rota real entre dois nós
+const getPathCoordinates = (nodeIds) => {
+  return nodeIds.map((id) => {
+    const node = CAMPUS_NODES[id];
+    return [node.lat, node.lng];
+  });
+};
+
+// Suaviza a rota com média móvel (arredonda as curvas)
+const smoothPath = (path, intensity = 0.3) => {
+  if (path.length < 3) return path;
+
+  const smoothed = [path[0]];
+
+  for (let i = 1; i < path.length - 1; i++) {
+    const prev = path[i - 1];
+    const curr = path[i];
+    const next = path[i + 1];
+
+    const smoothLat = curr[0] * (1 - intensity) + ((prev[0] + next[0]) / 2) * intensity;
+    const smoothLng = curr[1] * (1 - intensity) + ((prev[1] + next[1]) / 2) * intensity;
+
+    smoothed.push([smoothLat, smoothLng]);
+  }
+
+  smoothed.push(path[path.length - 1]);
+  return smoothed;
+};
+
+// Aplica desvio lateral suave para diferenciar os tipos de rota
+const applyRouteTypeOffset = (path, routeType) => {
+  const offsets = {
+    fastest: 0,
+    safest: 0.00008,
+    accessible: -0.00008,
+    balanced: 0.00004,
+  };
+
+  const offset = offsets[routeType] || 0;
+  if (offset === 0) return path;
+
+  return path.map((point, i) => {
+    if (i === 0 || i === path.length - 1) return point;
+    const t = i / (path.length - 1);
+    const perpendicular = Math.sin(t * Math.PI) * offset;
+    return [point[0] + perpendicular, point[1] + perpendicular];
+  });
+};
+
+// ============================================================================
+// Função principal — Retorna geometria real da rota
+// ============================================================================
 export const getRouteGeometry = async (start, end, options = {}) => {
   const { routeType = 'balanced' } = options;
 
-  console.log('🗺️ Gerando rota local dentro do campus...');
+  console.log('🗺️ Calculando rota sobre a rede do campus...');
 
-  // Garante que origem e destino estão dentro do campus
-  const safeStart = clampToCampus(start.latitude, start.longitude);
-  const safeEnd = clampToCampus(end.latitude, end.longitude);
+  // 1. Encontra nós mais próximos da origem e do destino
+  const startNode = findNearestNode(start.latitude, start.longitude);
+  const endNode = findNearestNode(end.latitude, end.longitude);
 
-  // Número de pontos na rota (mais = mais suave)
-  const steps = 25;
+  console.log('📍 Origem conectada ao nó:', startNode.nodeId);
+  console.log('📍 Destino conectado ao nó:', endNode.nodeId);
 
-  // Deslocamento lateral para cada tipo de rota (faz as rotas serem diferentes)
-  const offsets = {
-    fastest: 0,        // Reta (caminho mais curto)
-    safest: 0.00025,   // Desvia um pouco (evita áreas)
-    accessible: -0.0002, // Desvia para o outro lado (rampas)
-    balanced: 0.0001,  // Leve curvatura
-  };
-  const offset = offsets[routeType] || 0;
+  // 2. Monta grafo
+  const graph = buildGraph();
 
-  const points = [];
-  const dLat = safeEnd.lat - safeStart.lat;
-  const dLng = safeEnd.lng - safeStart.lng;
+  // 3. Aplica Dijkstra
+  const result = dijkstra(graph, startNode.nodeId, endNode.nodeId);
 
-  // Vetor perpendicular (para fazer a curvatura)
-  const perpLat = -dLng;
-  const perpLng = dLat;
-  const perpLength = Math.sqrt(perpLat * perpLat + perpLng * perpLng) || 1;
-
-  for (let i = 0; i <= steps; i++) {
-    const t = i / steps;
-
-    // Ponto base (interpolação linear)
-    let lat = safeStart.lat + dLat * t;
-    let lng = safeStart.lng + dLng * t;
-
-    // Adiciona curvatura suave (não nos extremos)
-    if (i > 0 && i < steps) {
-      // Curva em seno (vai e volta suavemente)
-      const curve = Math.sin(t * Math.PI) * offset;
-      lat += (perpLat / perpLength) * curve;
-      lng += (perpLng / perpLength) * curve;
-
-      // Pequeno zigue-zague para parecer "caminho de calçada"
-      const zigzag = Math.sin(t * Math.PI * 4) * 0.00003;
-      lat += (perpLat / perpLength) * zigzag;
-      lng += (perpLng / perpLength) * zigzag;
-    }
-
-    // Garante que cada ponto está dentro do campus
-    const clamped = clampToCampus(lat, lng);
-    points.push([clamped.lat, clamped.lng]);
+  if (!result.path || result.path.length === 0) {
+    console.warn('⚠️ Nenhum caminho encontrado na rede, usando linha reta');
+    return [
+      [start.latitude, start.longitude],
+      [end.latitude, end.longitude],
+    ];
   }
 
-  console.log('✅ Rota local gerada com', points.length, 'pontos');
-  return points;
+  console.log('✅ Caminho encontrado com', result.path.length, 'nós');
+
+  // 4. Converte nós em coordenadas
+  const pathCoords = getPathCoordinates(result.path);
+
+  // 5. Adiciona ponto exato da origem e do destino no início/fim
+  const fullPath = [
+    [start.latitude, start.longitude],
+    ...pathCoords,
+    [end.latitude, end.longitude],
+  ];
+
+  // 6. Aplica suavização (média móvel) para evitar quinas muito duras
+  const smoothedPath = smoothPath(fullPath, 0.3);
+
+  // 7. Adiciona variação por tipo de rota
+  const offsetPath = applyRouteTypeOffset(smoothedPath, routeType);
+
+  console.log('🎨 Rota final com', offsetPath.length, 'pontos');
+  return offsetPath;
 };
+
 
 export default {
   UNAERP_CAMPUS_POIS,
