@@ -4,6 +4,7 @@ import SearchBar from './components/SearchBar';
 import RoutePanel from './components/RoutePanel';
 import AccessibilityMenu from './components/AccessibilityMenu';
 import StreetViewModal from './components/StreetViewModal';
+import POIDetailModal from './components/POIDetailModal';
 // import PanoramaViewer from './components/PanoramaViewer'; // Temporariamente desabilitado (Three.js)
 import { calculateRoute, getRouteGeometry, UNAERP_CAMPUS_POIS } from './services/api';
 // import { getPanoramaForPOI } from './services/panoramaService'; // Temporariamente desabilitado
@@ -20,6 +21,8 @@ export default function App() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
   const [routeGeometry, setRouteGeometry] = useState(null);
+  const [shouldCollapseSearch, setShouldCollapseSearch] = useState(false);
+  const [detailPoi, setDetailPoi] = useState(null);
 
   // State do Street View 360° (Google)
   const [streetViewOpen, setStreetViewOpen] = useState(false);
@@ -95,6 +98,10 @@ export default function App() {
       if (foundRoutes.length > 0) {
         setSelectedRoute(foundRoutes[0]);
 
+        // Auto-recolher o SearchBar após calcular rota
+        setShouldCollapseSearch(true);
+        setTimeout(() => setShouldCollapseSearch(false), 500);
+
         // Buscar geometria da rota local dentro do campus
         const geometry = await getRouteGeometry(
           { latitude: origin.latitude, longitude: origin.longitude },
@@ -166,13 +173,24 @@ export default function App() {
       }
     };
 
+    const handlePoiDetail = (event) => {
+      const poiId = event.detail;
+      const poi = UNAERP_CAMPUS_POIS.find((p) => p.id === poiId);
+      if (poi) {
+        setDetailPoi(poi);
+        window.dispatchEvent(new CustomEvent('close-poi-popup'));
+      }
+    };
+
     window.addEventListener('poi-partir', handlePoiPartir);
     window.addEventListener('poi-ir', handlePoiIr);
     window.addEventListener('poi-selected', handlePoiSelected);
+    window.addEventListener('poi-detail', handlePoiDetail);
     return () => {
       window.removeEventListener('poi-partir', handlePoiPartir);
       window.removeEventListener('poi-ir', handlePoiIr);
       window.removeEventListener('poi-selected', handlePoiSelected);
+      window.removeEventListener('poi-detail', handlePoiDetail);
     };
   }, []);
 
@@ -225,6 +243,7 @@ export default function App() {
           selectedDestination={destination}
           loading={loading}
           onOpenStreetView={handleOpenStreetView}
+          shouldCollapse={shouldCollapseSearch}
         />
       </div>
 
@@ -248,6 +267,22 @@ export default function App() {
         onClose={handleCloseStreetView}
         location={streetViewLocation}
       />
+
+      {/* Camada 6: Modal de detalhes do POI (foto, descrição, ações) */}
+      {detailPoi && (
+        <POIDetailModal
+          poi={detailPoi}
+          onClose={() => setDetailPoi(null)}
+          onNavigate={(poi) => {
+            setDetailPoi(null);
+            setDestination(poi);
+          }}
+          onSetOrigin={(poi) => {
+            setDetailPoi(null);
+            setOrigin(poi);
+          }}
+        />
+      )}
 
       {/* Toast de erro / notificação */}
       {error && (

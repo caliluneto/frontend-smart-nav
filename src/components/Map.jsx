@@ -233,37 +233,22 @@ export default function Map({
       });
 
       marker.bindPopup(
-        `<div style="min-width: 160px; max-width: 200px; padding: 2px; font-family: Inter, sans-serif;">
-          <div style="display: flex; justify-content: space-between; align-items: center; gap: 6px; margin-bottom: 4px;">
-            <strong style="color: #1a237e; font-size: 14px; line-height: 1.1;">
-              ${emoji} ${poi.name}
-            </strong>
-            <button
-              onclick="window.dispatchEvent(new CustomEvent('close-poi-popup'))"
-              style="background: #f3f4f6; border: none; border-radius: 50%; width: 22px; height: 22px; min-height: 22px; cursor: pointer; color: #666; font-size: 14px; font-weight: bold; line-height: 1; flex-shrink: 0; display: flex; align-items: center; justify-content: center; padding: 0;"
-              aria-label="Fechar"
-            >&times;</button>
-          </div>
-          <button
-            onclick="window.dispatchEvent(new CustomEvent('poi-partir', {detail: '${poi.id}'}))"
-            style="width: 100%; background: #10b981; color: white; border: none; padding: 8px 10px; border-radius: 8px; font-weight: bold; cursor: pointer; font-size: 12px; margin-bottom: 4px; display: block; min-height: 32px;">
-            🟢 Partir daqui
-          </button>
-          <button
-            onclick="window.dispatchEvent(new CustomEvent('poi-ir', {detail: '${poi.id}'}))"
-            style="width: 100%; background: #1a237e; color: white; border: none; padding: 8px 10px; border-radius: 8px; font-weight: bold; cursor: pointer; font-size: 12px; display: block; min-height: 32px;">
-            🔵 Ir para este local
+        `<div style="min-width: 140px; max-width: 180px; padding: 4px; text-align: center; font-family: Inter, sans-serif;">
+          <strong style="color: #1a237e; font-size: 13px; line-height: 1.2; display: block; margin-bottom: 8px;">
+            ${emoji} ${poi.name}
+          </strong>
+          <button 
+            onclick="window.dispatchEvent(new CustomEvent('poi-detail', {detail: '${poi.id}'}))"
+            style="width: 100%; background: #1a237e; color: white; border: none; padding: 8px; border-radius: 8px; font-weight: bold; cursor: pointer; font-size: 12px; display: block;">
+            Ver detalhes
           </button>
         </div>`,
         {
           autoPan: true,
-          closeButton: false,
-          maxWidth: 220,
-          minWidth: 180,
+          closeButton: true,
+          maxWidth: 200,
+          minWidth: 160,
           className: 'compact-poi-popup',
-          offset: [0, -5],
-          autoClose: true,
-          closeOnClick: true,
         }
       );
 
@@ -378,14 +363,16 @@ export default function Map({
         }
       }
 
-      // 4. Zoom automático na rota (mais agressivo)
+      // 4. Zoom automático na rota (compensando o painel de rotas embaixo)
       const routeBounds = L.latLngBounds([
         [startPoint.latitude, startPoint.longitude],
         [endPoint.latitude, endPoint.longitude],
       ]);
       if (routeBounds.isValid()) {
+        const bottomReserved = typeof window !== 'undefined' ? Math.round(window.innerHeight * 0.4) : 120;
         map.fitBounds(routeBounds, {
-          padding: [60, 60],
+          paddingTopLeft: [60, 60],
+          paddingBottomRight: [60, bottomReserved],
           maxZoom: 18,
           animate: true,
           duration: 1.0,

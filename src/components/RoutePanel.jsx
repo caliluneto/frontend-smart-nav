@@ -35,7 +35,7 @@ export default function RoutePanel({
 }) {
   const [selectedIndex, setSelectedIndex] = useState(0);
   const [showSteps, setShowSteps] = useState(false);
-  const [sheetHeight, setSheetHeight] = useState(50); // % da tela
+  const [sheetHeight, setSheetHeight] = useState(35); // % da tela (35% deixa mais mapa visível)
   const startYRef = useRef(null);
   const startHeightRef = useRef(null);
 
@@ -102,7 +102,7 @@ export default function RoutePanel({
         </h2>
         <div className="flex items-center gap-1">
           <button
-            onClick={() => setSheetHeight(sheetHeight >= 75 ? 50 : 85)}
+            onClick={() => setSheetHeight(sheetHeight >= 75 ? 35 : 85)}
             className="p-1.5 hover:bg-gray-100 rounded-full transition"
             aria-label={sheetHeight >= 75 ? 'Recolher' : 'Expandir'}
           >
@@ -114,9 +114,9 @@ export default function RoutePanel({
           <button
             onClick={onClose}
             className="p-1.5 hover:bg-gray-100 rounded-full transition"
-            aria-label="Fechar"
+            aria-label="Recolher rotas"
           >
-            <X size={18} className="text-gray-500" />
+            <ChevronDown size={20} className="text-gray-500" />
           </button>
         </div>
       </div>

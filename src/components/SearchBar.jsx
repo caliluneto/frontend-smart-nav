@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
-import { Search, X, MapPin, Navigation, ArrowRightLeft, Loader, Sparkles } from 'lucide-react';
+import { Search, X, MapPin, Navigation, ArrowRightLeft, Loader, Sparkles, ChevronDown } from 'lucide-react';
 import { searchPOIs, UNAERP_CAMPUS_POIS } from '../services/api';
 
 // ============================================================================
@@ -13,6 +13,7 @@ export default function SearchBar({
   selectedDestination,
   loading,
   onOpenStreetView,
+  shouldCollapse,
 }) {
   const [isExpanded, setIsExpanded] = useState(false);
   const [isMobile, setIsMobile] = useState(false);
@@ -34,6 +35,13 @@ export default function SearchBar({
     window.addEventListener('resize', checkMobile);
     return () => window.removeEventListener('resize', checkMobile);
   }, []);
+
+  // Auto-recolher quando solicitado externamente (ex: cálculo de rota)
+  useEffect(() => {
+    if (shouldCollapse && isMobile) {
+      setIsExpanded(false);
+    }
+  }, [shouldCollapse, isMobile]);
 
   // Sincroniza query com pontos selecionados externamente
   useEffect(() => {
@@ -187,9 +195,9 @@ export default function SearchBar({
               <button
                 onClick={() => setIsExpanded(false)}
                 className="p-1 hover:bg-gray-100 rounded-full transition"
-                aria-label="Fechar busca"
+                aria-label="Recolher busca"
               >
-                <X size={14} className="text-gray-500" />
+                <ChevronDown size={18} className="text-gray-500" />
               </button>
             )}
           </div>
