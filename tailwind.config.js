@@ -9,12 +9,15 @@ export default {
       colors: {
         unaerp: {
           blue: '#1a237e',
-          'blue-light': '#283593',
-          'blue-dark': '#0d1642',
+          'blue-light': '#3949ab',
+          'blue-dark': '#0d1b5e',
           yellow: '#fbc02d',
           'yellow-light': '#fdd835',
           'yellow-dark': '#f9a825',
         },
+      },
+      boxShadow: {
+        'unaerp': '0 4px 20px rgba(26, 35, 126, 0.15)',
       },
       fontFamily: {
         sans: ['Inter', 'system-ui', '-apple-system', 'sans-serif'],

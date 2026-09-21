@@ -138,7 +138,14 @@ export default function Map({
     mapInstance.current = L.map(mapContainer.current, {
       zoomControl: false,
       attributionControl: false,
-    }).setView(UNAERP_CENTER, 16);
+    }).setView(UNAERP_CENTER, 17);
+
+    // Ajusta o mapa para enquadrar o campus
+    const campusBounds = L.latLngBounds(UNAERP_POLYGON);
+    mapInstance.current.fitBounds(campusBounds, {
+      padding: [30, 30],
+      maxZoom: 17,
+    });
 
     // Camada de mapas OpenStreetMap
     L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
@@ -176,6 +183,28 @@ export default function Map({
     };
   }, []);
 
+  // Força recálculo de tamanho do mapa (fix mobile grey areas)
+  useEffect(() => {
+    const map = mapInstance.current;
+    if (!map) return;
+
+    // Aguarda 300ms e força o recálculo do tamanho
+    const timer = setTimeout(() => {
+      map.invalidateSize();
+    }, 300);
+
+    // Também escuta rotação/resize de tela
+    const handleResize = () => map.invalidateSize();
+    window.addEventListener('resize', handleResize);
+    window.addEventListener('orientationchange', handleResize);
+
+    return () => {
+      clearTimeout(timer);
+      window.removeEventListener('resize', handleResize);
+      window.removeEventListener('orientationchange', handleResize);
+    };
+  }, []);
+
   // Atualizar marcadores, rotas e POIs
   useEffect(() => {
     if (!mapInstance.current || !layerGroup.current) return;
@@ -183,67 +212,86 @@ export default function Map({
     layerGroup.current.clearLayers();
     const bounds = L.latLngBounds();
 
-    // Renderizar todos os POIs do campus com popups interativos
+    // ============================================================
+    // POIs — popup compacto e clicável em mobile
+    // ============================================================
+    let openPopup = null;
+    const map = mapInstance.current;
+
     const activePois = pois && pois.length > 0 ? pois : UNAERP_CAMPUS_POIS;
     activePois.forEach((poi) => {
       const isStart = startPoint && startPoint.name === poi.name;
       const isEnd = endPoint && endPoint.name === poi.name;
-      if (isStart || isEnd) return; // Não duplica ícone se já for partida/destino
+      if (isStart || isEnd) return;
 
-      const icon = createIcon('#1a237e', getPoiEmoji(poi.type), 32);
-      const marker = L.marker([poi.latitude, poi.longitude], { icon });
+      const emoji = getPoiEmoji(poi.type);
+      const poiIcon = createIcon('#283593', emoji, 28);
 
-      // Cria container de popup interativo com botões
-      const popupDiv = document.createElement('div');
-      popupDiv.style.fontFamily = 'Inter, sans-serif';
-      popupDiv.style.padding = '4px';
-      popupDiv.innerHTML = `
-        <div style="margin-bottom: 8px;">
-          <strong style="color: #1a237e; font-size: 14px; display: block;">${poi.name}</strong>
-          <span style="color: #666; font-size: 12px;">${poi.description || ''}</span>
-        </div>
-        <div style="display: flex; flex-direction: column; gap: 4px;">
-          <button id="btn-start-${poi.id}" style="background: #10b981; color: white; border: none; padding: 5px 10px; border-radius: 6px; font-size: 12px; font-weight: 600; cursor: pointer; text-align: center;">
+      const marker = L.marker([poi.latitude, poi.longitude], {
+        icon: poiIcon,
+        zIndexOffset: 500,
+      });
+
+      marker.bindPopup(
+        `<div style="min-width: 160px; max-width: 200px; padding: 2px; font-family: Inter, sans-serif;">
+          <div style="display: flex; justify-content: space-between; align-items: center; gap: 6px; margin-bottom: 4px;">
+            <strong style="color: #1a237e; font-size: 14px; line-height: 1.1;">
+              ${emoji} ${poi.name}
+            </strong>
+            <button
+              onclick="window.dispatchEvent(new CustomEvent('close-poi-popup'))"
+              style="background: #f3f4f6; border: none; border-radius: 50%; width: 22px; height: 22px; min-height: 22px; cursor: pointer; color: #666; font-size: 14px; font-weight: bold; line-height: 1; flex-shrink: 0; display: flex; align-items: center; justify-content: center; padding: 0;"
+              aria-label="Fechar"
+            >&times;</button>
+          </div>
+          <button
+            onclick="window.dispatchEvent(new CustomEvent('poi-partir', {detail: '${poi.id}'}))"
+            style="width: 100%; background: #10b981; color: white; border: none; padding: 8px 10px; border-radius: 8px; font-weight: bold; cursor: pointer; font-size: 12px; margin-bottom: 4px; display: block; min-height: 32px;">
             🟢 Partir daqui
           </button>
-          <button id="btn-end-${poi.id}" style="background: #fbc02d; color: #1a237e; border: none; padding: 5px 10px; border-radius: 6px; font-size: 12px; font-weight: 600; cursor: pointer; text-align: center;">
-            🎯 Ir para cá
+          <button
+            onclick="window.dispatchEvent(new CustomEvent('poi-ir', {detail: '${poi.id}'}))"
+            style="width: 100%; background: #1a237e; color: white; border: none; padding: 8px 10px; border-radius: 8px; font-weight: bold; cursor: pointer; font-size: 12px; display: block; min-height: 32px;">
+            🔵 Ir para este local
           </button>
-          <button id="btn-sv-${poi.id}" style="background: #374151; color: white; border: none; padding: 5px 10px; border-radius: 6px; font-size: 12px; font-weight: 600; cursor: pointer; text-align: center; display: flex; align-items: center; justify-content: center; gap: 4px;">
-            📷 Street View (Entrada)
-          </button>
-        </div>
-      `;
+        </div>`,
+        {
+          autoPan: true,
+          closeButton: false,
+          maxWidth: 220,
+          minWidth: 180,
+          className: 'compact-poi-popup',
+          offset: [0, -5],
+          autoClose: true,
+          closeOnClick: true,
+        }
+      );
 
-      // Listeners nos botões do popup
-      marker.bindPopup(popupDiv);
-      marker.on('popupopen', () => {
-        const startBtn = document.getElementById(`btn-start-${poi.id}`);
-        const endBtn = document.getElementById(`btn-end-${poi.id}`);
-        const svBtn = document.getElementById(`btn-sv-${poi.id}`);
-
-        if (startBtn && onSelectOrigin) {
-          startBtn.onclick = () => {
-            onSelectOrigin(poi);
-            marker.closePopup();
-          };
+      // Fechar popup anterior ao abrir novo
+      marker.on('click', () => {
+        if (openPopup && openPopup !== marker) {
+          openPopup.closePopup();
         }
-        if (endBtn && onSelectDestination) {
-          endBtn.onclick = () => {
-            onSelectDestination(poi);
-            marker.closePopup();
-          };
-        }
-        if (svBtn && onOpenStreetView) {
-          svBtn.onclick = () => {
-            onOpenStreetView(poi);
-            marker.closePopup();
-          };
-        }
+        openPopup = marker;
+        marker.openPopup();
       });
 
       marker.addTo(layerGroup.current);
     });
+
+    // Fechar popup ao clicar no mapa (fora dos markers)
+    map.off('click.poi');
+    map.on('click', () => {
+      map.closePopup();
+      openPopup = null;
+    });
+
+    // Escutar evento customizado de fechar (botão X no popup)
+    const closePopupHandler = () => {
+      map.closePopup();
+      openPopup = null;
+    };
+    window.addEventListener('close-poi-popup', closePopupHandler);
 
     // Marcador de início (bolinha azul - padrão Google Maps)
     if (startPoint) {
@@ -330,18 +378,25 @@ export default function Map({
         }
       }
 
-      // 4. Ajusta zoom para origem + destino sem sair do campus
+      // 4. Zoom automático na rota (mais agressivo)
       const routeBounds = L.latLngBounds([
         [startPoint.latitude, startPoint.longitude],
         [endPoint.latitude, endPoint.longitude],
       ]);
       if (routeBounds.isValid()) {
-        // Combina os limites da rota com os limites do campus
-        const campusBounds = L.latLngBounds(UNAERP_POLYGON);
-        const finalBounds = routeBounds.extend(campusBounds);
-        mapInstance.current.fitBounds(finalBounds, { padding: [80, 80], maxZoom: 17 });
+        map.fitBounds(routeBounds, {
+          padding: [60, 60],
+          maxZoom: 18,
+          animate: true,
+          duration: 1.0,
+        });
       }
     }
+
+    // Cleanup do close-poi-popup listener
+    return () => {
+      window.removeEventListener('close-poi-popup', closePopupHandler);
+    };
   }, [startPoint, endPoint, routes, selectedRoute, routeGeometry, pois, onSelectOrigin, onSelectDestination, onOpenStreetView, onOpenPanorama]);
 
   return (

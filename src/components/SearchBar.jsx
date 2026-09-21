@@ -1,9 +1,9 @@
 import { useState, useEffect, useRef } from 'react';
-import { Search, MapPin, Navigation, X, ArrowRightLeft, Loader, Eye, Sparkles } from 'lucide-react';
+import { Search, X, MapPin, Navigation, ArrowRightLeft, Loader, Sparkles } from 'lucide-react';
 import { searchPOIs, UNAERP_CAMPUS_POIS } from '../services/api';
 
 // ============================================================================
-// SearchBar — Barra de busca floating com busca de partida, destino e sugestões
+// SearchBar — Barra de busca floating, compacta no mobile
 // ============================================================================
 export default function SearchBar({
   onSelectOrigin,
@@ -14,48 +14,64 @@ export default function SearchBar({
   loading,
   onOpenStreetView,
 }) {
+  const [isExpanded, setIsExpanded] = useState(false);
+  const [isMobile, setIsMobile] = useState(false);
   const [fromQuery, setFromQuery] = useState('');
   const [toQuery, setToQuery] = useState('');
   const [fromSuggestions, setFromSuggestions] = useState([]);
   const [toSuggestions, setToSuggestions] = useState([]);
   const [showFrom, setShowFrom] = useState(false);
   const [showTo, setShowTo] = useState(false);
-
+  const inputRef = useRef(null);
+  const containerRef = useRef(null);
   const fromRef = useRef(null);
   const toRef = useRef(null);
 
-  // Sincroniza query com pontos selecionados externamente (ex: clique no mapa)
+  // Detecta mobile — roda no mount
   useEffect(() => {
-    if (selectedOrigin) {
-      setFromQuery(selectedOrigin.name);
-    }
+    const checkMobile = () => setIsMobile(window.innerWidth < 640);
+    checkMobile();
+    window.addEventListener('resize', checkMobile);
+    return () => window.removeEventListener('resize', checkMobile);
+  }, []);
+
+  // Sincroniza query com pontos selecionados externamente
+  useEffect(() => {
+    if (selectedOrigin) setFromQuery(selectedOrigin.name);
   }, [selectedOrigin]);
 
   useEffect(() => {
-    if (selectedDestination) {
-      setToQuery(selectedDestination.name);
-    }
+    if (selectedDestination) setToQuery(selectedDestination.name);
   }, [selectedDestination]);
 
-  // Carrega sugestões de partida (busca instantânea local + backend)
+  // Recolhe automaticamente em mobile ao selecionar destino
   useEffect(() => {
+    if (isMobile && selectedOrigin && selectedDestination) {
+      setTimeout(() => setIsExpanded(false), 500);
+    }
+  }, [selectedOrigin, selectedDestination, isMobile]);
+
+  // Busca com debounce — partida
+  useEffect(() => {
+    if (fromQuery.length < 1) { setFromSuggestions([]); return; }
     const timer = setTimeout(async () => {
       const results = await searchPOIs(fromQuery);
       setFromSuggestions(results || []);
-    }, 150);
+    }, 200);
     return () => clearTimeout(timer);
   }, [fromQuery]);
 
-  // Carrega sugestões de destino
+  // Busca com debounce — destino
   useEffect(() => {
+    if (toQuery.length < 1) { setToSuggestions([]); return; }
     const timer = setTimeout(async () => {
       const results = await searchPOIs(toQuery);
       setToSuggestions(results || []);
-    }, 150);
+    }, 200);
     return () => clearTimeout(timer);
   }, [toQuery]);
 
-  // Fechar sugestões ao clicar fora
+  // Fecha sugestões ao clicar fora
   useEffect(() => {
     const handleClick = (e) => {
       if (fromRef.current && !fromRef.current.contains(e.target)) setShowFrom(false);
@@ -83,11 +99,10 @@ export default function SearchBar({
 
   const handleSwap = () => {
     const tempQuery = fromQuery;
-    const tempPoi = selectedOrigin;
     setFromQuery(toQuery);
     setToQuery(tempQuery);
     onSelectOrigin(selectedDestination);
-    onSelectDestination(tempPoi);
+    onSelectDestination(selectedOrigin);
   };
 
   const handleClear = () => {
@@ -101,130 +116,122 @@ export default function SearchBar({
 
   const typeEmoji = (type) => {
     const map = {
-      classroom: '🏫',
-      laboratory: '🔬',
-      library: '📚',
-      cafeteria: '☕',
-      auditorium: '🎭',
-      restroom: '🚻',
-      parking: '🅿️',
-      entrance: '🚪',
-      health: '🏥',
-      sports: '⚽',
+      classroom: '🏫', laboratory: '🔬', library: '📚', cafeteria: '☕',
+      auditorium: '🎭', restroom: '🚻', parking: '🅿️', entrance: '🚪',
+      health: '🏥', sports: '⚽',
     };
     return map[type] || '📍';
   };
 
-  // Pontos de atalho rápido (IDs devem corresponder aos de UNAERP_CAMPUS_POIS)
-  const quickPois = [
-    { label: 'Portaria', id: 'portaria-principal' },
-    { label: 'Biblioteca', id: 'bloco-e' },
-    { label: 'Bloco A', id: 'bloco-a' },
-    { label: 'Bloco B', id: 'bloco-b' },
-    { label: 'Cantina', id: 'cantina' },
-    { label: 'Hospital', id: 'hospital' },
-  ];
-
-  const handleQuickSelect = (poiId, label) => {
-    // Busca pelo ID exato primeiro, depois por nome
-    const found = UNAERP_CAMPUS_POIS.find((p) => p.id === poiId)
-      || UNAERP_CAMPUS_POIS.find((p) =>
-        p.name.toLowerCase().includes(label.toLowerCase())
-      );
-
-    if (!found) return;
-
-    // Sempre seleciona como destino
-    selectTo(found);
+  const handleShortcutClick = (name) => {
+    const poi = UNAERP_CAMPUS_POIS?.find(
+      (p) => p.name.toLowerCase().includes(name.toLowerCase())
+    );
+    if (poi) {
+      selectTo(poi);
+    } else {
+      setToQuery(name);
+    }
   };
 
+  // ================================================================
+  // MODO COMPACTO — mobile, recolhido (padrão)
+  // ================================================================
+  if (isMobile && !isExpanded) {
+    return (
+      <div className="bg-white rounded-full shadow-lg overflow-hidden">
+        <button
+          onClick={() => {
+            setIsExpanded(true);
+            setTimeout(() => inputRef.current?.focus(), 100);
+          }}
+          className="w-full flex items-center gap-2 px-3 py-2"
+          aria-label="Abrir busca"
+        >
+          <Search className="text-unaerp-blue flex-shrink-0" size={18} />
+          <span className="text-gray-500 text-xs truncate">
+            {selectedDestination ? `🎯 ${selectedDestination.name}` : 'Buscar destino...'}
+          </span>
+          {selectedOrigin && selectedDestination && (
+            <span className="ml-auto text-[10px] text-emerald-600 font-bold bg-emerald-50 px-2 py-0.5 rounded-full flex-shrink-0">
+              Rota OK
+            </span>
+          )}
+        </button>
+      </div>
+    );
+  }
+
+  // ================================================================
+  // MODO EXPANDIDO — desktop always, mobile quando clica
+  // ================================================================
   return (
-    <div className="absolute top-4 left-4 right-4 z-[1000] max-w-xl mx-auto animate-slide-down">
-      <div className="glass rounded-2xl shadow-xl overflow-visible border border-white/40">
-        {/* Header da barra de busca */}
-        <div className="px-4 py-2.5 flex items-center justify-between border-b border-gray-100">
-          <div className="flex items-center gap-2">
-            <div className="w-7 h-7 rounded-full bg-unaerp-blue flex items-center justify-center flex-shrink-0">
-              <Navigation size={14} className="text-unaerp-yellow" />
-            </div>
-            <div>
-              <h1 className="text-xs font-bold text-unaerp-blue tracking-tight">
-                Campus UNAERP — Ribeirânia
-              </h1>
-            </div>
-          </div>
-
+    <div ref={containerRef} className="relative w-full">
+      <div className="bg-white rounded-2xl shadow-2xl overflow-visible">
+        {/* Header com botão fechar */}
+        <div className={`flex items-center justify-between ${isMobile ? 'px-3 py-1.5' : 'px-4 py-2'} border-b border-gray-100`}>
+          <span className="text-xs font-semibold text-gray-500">
+            {isMobile ? 'Buscar destino' : 'Campus UNAERP — Ribeirânia'}
+          </span>
           <div className="flex items-center gap-1">
-            {onOpenStreetView && (
-              <button
-                onClick={() => onOpenStreetView(selectedDestination || selectedOrigin)}
-                className="px-2.5 py-1 rounded-lg text-xs font-medium text-unaerp-blue bg-unaerp-blue/10 hover:bg-unaerp-blue/20 flex items-center gap-1 transition"
-                title="Abrir Street View 360°"
-              >
-                <Eye size={13} className="text-unaerp-blue" />
-                <span className="hidden sm:inline">Street View</span>
-              </button>
-            )}
-
             {(fromQuery || toQuery) && (
               <button
                 onClick={handleClear}
                 className="p-1 rounded-full hover:bg-gray-100 text-gray-400 hover:text-gray-600 transition"
                 aria-label="Limpar campos"
-                title="Limpar campos"
               >
-                <X size={15} />
+                <X size={14} />
+              </button>
+            )}
+            {isMobile && (
+              <button
+                onClick={() => setIsExpanded(false)}
+                className="p-1 hover:bg-gray-100 rounded-full transition"
+                aria-label="Fechar busca"
+              >
+                <X size={14} className="text-gray-500" />
               </button>
             )}
           </div>
         </div>
 
-        {/* Inputs de Partida e Destino */}
-        <div className="p-3 space-y-2">
+        {/* Campos de Partida e Destino */}
+        <div className={`${isMobile ? 'p-2 space-y-1.5' : 'p-3 space-y-2'}`}>
           {/* Campo: Partida */}
           <div className="relative" ref={fromRef}>
-            <div className="flex items-center gap-2 bg-white/90 rounded-xl px-3 py-2 border border-gray-200 focus-within:border-emerald-500 focus-within:ring-2 focus-within:ring-emerald-500/20 transition shadow-sm">
-              <div className="w-2.5 h-2.5 rounded-full bg-emerald-500 flex-shrink-0" />
+            <div className={`flex items-center gap-2 bg-gray-50 rounded-xl ${isMobile ? 'px-2.5 py-2' : 'px-3 py-2.5'} border border-gray-200 focus-within:border-emerald-500 focus-within:ring-2 focus-within:ring-emerald-500/20 transition`}>
+              <div className="w-5 h-5 rounded-full bg-emerald-500 flex items-center justify-center flex-shrink-0">
+                <div className="w-2 h-2 rounded-full bg-white" />
+              </div>
               <input
                 type="text"
                 value={fromQuery}
                 onChange={(e) => {
                   setFromQuery(e.target.value);
-                  if (selectedOrigin && selectedOrigin.name !== e.target.value) {
-                    onSelectOrigin(null);
-                  }
+                  if (selectedOrigin && selectedOrigin.name !== e.target.value) onSelectOrigin(null);
                 }}
-                onFocus={() => {
-                  setShowFrom(true);
-                  setShowTo(false);
-                }}
-                placeholder="De onde? (ex: Portaria, Bloco A, Cantina)"
+                onFocus={() => { setShowFrom(true); setShowTo(false); }}
+                placeholder="De onde?"
                 className="flex-1 bg-transparent text-sm text-gray-800 placeholder:text-gray-400 outline-none"
                 aria-label="Local de partida"
               />
               {selectedOrigin && (
-                <span className="text-xs text-emerald-600 font-bold bg-emerald-50 px-1.5 py-0.5 rounded">
-                  OK
-                </span>
+                <span className="text-[10px] text-emerald-600 font-bold bg-emerald-50 px-1.5 py-0.5 rounded">OK</span>
               )}
             </div>
 
-            {/* Sugestões de Partida */}
             {showFrom && fromSuggestions.length > 0 && (
-              <div className="absolute top-full left-0 right-0 mt-1 glass rounded-xl shadow-xl max-h-56 overflow-y-auto z-50 border border-gray-100">
-                <div className="px-3 py-1.5 bg-gray-50 text-[11px] font-semibold text-gray-400 uppercase tracking-wider">
-                  Selecione o ponto de partida
-                </div>
+              <div className="absolute top-full left-0 right-0 mt-1 bg-white rounded-xl shadow-xl max-h-48 overflow-y-auto z-50 border border-gray-100">
                 {fromSuggestions.map((poi, i) => (
                   <button
                     key={poi.id || i}
                     onClick={() => selectFrom(poi)}
-                    className="w-full text-left px-3 py-2 hover:bg-unaerp-blue/10 flex items-center gap-2.5 transition border-b border-gray-50 last:border-0"
+                    className="w-full text-left px-3 py-2 hover:bg-unaerp-blue/10 flex items-center gap-2 transition border-b border-gray-50 last:border-0"
                   >
-                    <span className="text-base">{typeEmoji(poi.type)}</span>
+                    <span className="text-sm">{typeEmoji(poi.type)}</span>
                     <div className="flex-1 min-w-0">
                       <p className="text-sm font-semibold text-gray-800 truncate">{poi.name}</p>
-                      <p className="text-xs text-gray-500 truncate">{poi.description}</p>
+                      <p className="text-[11px] text-gray-500 truncate">{poi.description}</p>
                     </div>
                   </button>
                 ))}
@@ -232,63 +239,55 @@ export default function SearchBar({
             )}
           </div>
 
-          {/* Botão de Inverter */}
+          {/* Inverter + label */}
           <div className="flex items-center justify-between px-1">
-            <span className="text-[11px] text-gray-400">Rota a pé pelo campus</span>
+            <span className="text-[10px] text-gray-400">Rota a pé pelo campus</span>
             <button
               onClick={handleSwap}
               disabled={!selectedOrigin && !selectedDestination}
               className="p-1 rounded-full hover:bg-gray-100 text-gray-400 hover:text-unaerp-blue transition disabled:opacity-40"
-              title="Inverter partida e destino"
+              title="Inverter"
             >
-              <ArrowRightLeft size={13} />
+              <ArrowRightLeft size={12} />
             </button>
           </div>
 
           {/* Campo: Destino */}
           <div className="relative" ref={toRef}>
-            <div className="flex items-center gap-2 bg-white/90 rounded-xl px-3 py-2 border border-gray-200 focus-within:border-unaerp-yellow focus-within:ring-2 focus-within:ring-unaerp-yellow/30 transition shadow-sm">
-              <div className="w-2.5 h-2.5 rounded-full bg-unaerp-yellow flex-shrink-0" />
+            <div className={`flex items-center gap-2 bg-gray-50 rounded-xl ${isMobile ? 'px-2.5 py-2' : 'px-3 py-2.5'} border border-gray-200 focus-within:border-unaerp-yellow focus-within:ring-2 focus-within:ring-unaerp-yellow/30 transition`}>
+              <div className="w-5 h-5 rounded-full bg-unaerp-yellow flex items-center justify-center flex-shrink-0">
+                <div className="w-2 h-2 rounded-full bg-unaerp-blue" />
+              </div>
               <input
+                ref={inputRef}
                 type="text"
                 value={toQuery}
                 onChange={(e) => {
                   setToQuery(e.target.value);
-                  if (selectedDestination && selectedDestination.name !== e.target.value) {
-                    onSelectDestination(null);
-                  }
+                  if (selectedDestination && selectedDestination.name !== e.target.value) onSelectDestination(null);
                 }}
-                onFocus={() => {
-                  setShowTo(true);
-                  setShowFrom(false);
-                }}
-                placeholder="Para onde? (ex: Biblioteca, Bloco C, Teatro)"
+                onFocus={() => { setShowTo(true); setShowFrom(false); }}
+                placeholder="Para onde?"
                 className="flex-1 bg-transparent text-sm text-gray-800 placeholder:text-gray-400 outline-none"
                 aria-label="Local de destino"
               />
               {selectedDestination && (
-                <span className="text-xs text-unaerp-yellow-dark font-bold bg-yellow-50 px-1.5 py-0.5 rounded">
-                  OK
-                </span>
+                <span className="text-[10px] text-unaerp-yellow-dark font-bold bg-yellow-50 px-1.5 py-0.5 rounded">OK</span>
               )}
             </div>
 
-            {/* Sugestões de Destino */}
             {showTo && toSuggestions.length > 0 && (
-              <div className="absolute top-full left-0 right-0 mt-1 glass rounded-xl shadow-xl max-h-56 overflow-y-auto z-50 border border-gray-100">
-                <div className="px-3 py-1.5 bg-gray-50 text-[11px] font-semibold text-gray-400 uppercase tracking-wider">
-                  Selecione o destino
-                </div>
+              <div className="absolute top-full left-0 right-0 mt-1 bg-white rounded-xl shadow-xl max-h-48 overflow-y-auto z-50 border border-gray-100">
                 {toSuggestions.map((poi, i) => (
                   <button
                     key={poi.id || i}
                     onClick={() => selectTo(poi)}
-                    className="w-full text-left px-3 py-2 hover:bg-unaerp-yellow/15 flex items-center gap-2.5 transition border-b border-gray-50 last:border-0"
+                    className="w-full text-left px-3 py-2 hover:bg-unaerp-yellow/15 flex items-center gap-2 transition border-b border-gray-50 last:border-0"
                   >
-                    <span className="text-base">{typeEmoji(poi.type)}</span>
+                    <span className="text-sm">{typeEmoji(poi.type)}</span>
                     <div className="flex-1 min-w-0">
                       <p className="text-sm font-semibold text-gray-800 truncate">{poi.name}</p>
-                      <p className="text-xs text-gray-500 truncate">{poi.description}</p>
+                      <p className="text-[11px] text-gray-500 truncate">{poi.description}</p>
                     </div>
                   </button>
                 ))}
@@ -296,18 +295,18 @@ export default function SearchBar({
             )}
           </div>
 
-          {/* Atalhos rápidos de POIs */}
-          <div className="flex items-center gap-1.5 overflow-x-auto pt-1 pb-0.5 text-xs">
-            <span className="text-gray-400 text-[11px] flex-shrink-0 flex items-center gap-1">
-              <Sparkles size={11} className="text-unaerp-yellow-dark" /> Atalhos:
+          {/* Atalhos (mobile: só 4) */}
+          <div className={`flex items-center gap-1.5 overflow-x-auto ${isMobile ? 'pt-0.5 pb-0' : 'pt-1 pb-0.5'}`}>
+            <span className={`text-gray-400 flex-shrink-0 ${isMobile ? 'text-[9px]' : 'text-[10px]'} flex items-center gap-1`}>
+              <Sparkles size={10} className="text-unaerp-yellow-dark" /> Atalhos:
             </span>
-            {quickPois.map((qp) => (
+            {(isMobile ? ['Portaria', 'Biblioteca', 'Bloco A', 'Cantina'] : ['Portaria', 'Biblioteca', 'Bloco A', 'Bloco B', 'Cantina', 'Hospital']).map((name) => (
               <button
-                key={qp.id}
-                onClick={() => handleQuickSelect(qp.id, qp.label)}
-                className="px-2 py-0.5 rounded-md bg-gray-100/80 hover:bg-unaerp-blue hover:text-white text-gray-700 transition whitespace-nowrap text-[11px]"
+                key={name}
+                onClick={() => handleShortcutClick(name)}
+                className={`flex-shrink-0 font-semibold text-gray-600 bg-gray-100 hover:bg-unaerp-blue hover:text-white rounded-full transition whitespace-nowrap ${isMobile ? 'px-2 py-0.5 text-[9px]' : 'px-2 py-1 text-[10px]'}`}
               >
-                {qp.label}
+                {name}
               </button>
             ))}
           </div>
@@ -317,9 +316,9 @@ export default function SearchBar({
             onClick={onCalculateRoute}
             disabled={!canCalculate}
             className={`
-              w-full py-2.5 rounded-xl font-bold text-sm flex items-center justify-center gap-2 transition-all shadow-md
+              w-full ${isMobile ? 'py-2' : 'py-2.5'} rounded-xl font-bold ${isMobile ? 'text-xs' : 'text-sm'} flex items-center justify-center gap-2 transition-all shadow-md
               ${canCalculate
-                ? 'bg-unaerp-blue text-white hover:bg-unaerp-blue-light active:scale-[0.99] cursor-pointer shadow-unaerp-blue/20'
+                ? 'bg-unaerp-blue text-white hover:bg-unaerp-blue-light active:scale-[0.99] cursor-pointer'
                 : 'bg-gray-200 text-gray-400 cursor-not-allowed'
               }
             `}
@@ -328,12 +327,12 @@ export default function SearchBar({
             {loading ? (
               <>
                 <Loader size={16} className="animate-spin text-unaerp-yellow" />
-                <span>Calculando trajeto...</span>
+                <span>Calculando...</span>
               </>
             ) : (
               <>
                 <Search size={16} />
-                <span>{canCalculate ? 'Calcular Rota Agora' : 'Selecione Partida e Destino'}</span>
+                <span>{canCalculate ? 'Calcular Rota' : 'Selecione Partida e Destino'}</span>
               </>
             )}
           </button>

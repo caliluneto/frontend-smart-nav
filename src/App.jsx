@@ -136,31 +136,97 @@ export default function App() {
     setRouteGeometry(null);
   };
 
+  // Listeners globais para eventos dos popups de POI
+  useEffect(() => {
+    const handlePoiPartir = (event) => {
+      const poiId = event.detail;
+      const poi = UNAERP_CAMPUS_POIS.find((p) => p.id === poiId);
+      if (poi) {
+        setOrigin(poi);
+        window.dispatchEvent(new CustomEvent('close-poi-popup'));
+      }
+    };
+
+    const handlePoiIr = (event) => {
+      const poiId = event.detail;
+      const poi = UNAERP_CAMPUS_POIS.find((p) => p.id === poiId);
+      if (poi) {
+        setDestination(poi);
+        window.dispatchEvent(new CustomEvent('close-poi-popup'));
+      }
+    };
+
+    // Compat: manter poi-selected para popups antigos
+    const handlePoiSelected = (event) => {
+      const poiId = event.detail;
+      const poi = UNAERP_CAMPUS_POIS.find((p) => p.id === poiId);
+      if (poi) {
+        setDestination(poi);
+        window.dispatchEvent(new CustomEvent('close-poi-popup'));
+      }
+    };
+
+    window.addEventListener('poi-partir', handlePoiPartir);
+    window.addEventListener('poi-ir', handlePoiIr);
+    window.addEventListener('poi-selected', handlePoiSelected);
+    return () => {
+      window.removeEventListener('poi-partir', handlePoiPartir);
+      window.removeEventListener('poi-ir', handlePoiIr);
+      window.removeEventListener('poi-selected', handlePoiSelected);
+    };
+  }, []);
+
   return (
     <div className="relative w-full h-full overflow-hidden bg-gray-100">
-      {/* Camada 1: Mapa fullscreen com centro na UNAERP */}
-      <Map
-        startPoint={origin}
-        endPoint={destination}
-        routes={routes}
-        selectedRoute={selectedRoute}
-        routeGeometry={routeGeometry}
-        pois={UNAERP_CAMPUS_POIS}
-        onSelectOrigin={setOrigin}
-        onSelectDestination={setDestination}
-        onOpenStreetView={handleOpenStreetView}
-      />
+      {/* Header UNAERP */}
+      <div className="fixed top-0 left-0 right-0 z-[999] bg-gradient-to-r from-unaerp-blue to-unaerp-blue-light shadow-lg">
+        <div className="flex items-center justify-between py-2.5 px-4">
+          <div className="flex items-center gap-2">
+            <div className="bg-unaerp-yellow text-unaerp-blue font-black text-xl w-9 h-9 rounded-xl flex items-center justify-center shadow-md">
+              U
+            </div>
+            <div className="text-white">
+              <p className="font-bold text-base leading-tight">UNAERP</p>
+              <p className="text-[10px] text-unaerp-yellow leading-tight">Navegação do Campus</p>
+            </div>
+          </div>
+          <button
+            onClick={() => handleOpenStreetView()}
+            className="px-3 py-1.5 rounded-lg text-xs font-medium text-white bg-white/15 hover:bg-white/25 flex items-center gap-1.5 transition"
+            title="Abrir Street View 360°"
+          >
+            📷 <span className="hidden sm:inline">Street View</span>
+          </button>
+        </div>
+      </div>
 
-      {/* Camada 2: Barra de busca flutuante */}
-      <SearchBar
-        onSelectOrigin={setOrigin}
-        onSelectDestination={setDestination}
-        onCalculateRoute={handleCalculateRoute}
-        selectedOrigin={origin}
-        selectedDestination={destination}
-        loading={loading}
-        onOpenStreetView={handleOpenStreetView}
-      />
+      {/* Camada 1: Mapa fullscreen */}
+      <div className="fixed inset-0 w-full h-full">
+        <Map
+          startPoint={origin}
+          endPoint={destination}
+          routes={routes}
+          selectedRoute={selectedRoute}
+          routeGeometry={routeGeometry}
+          pois={UNAERP_CAMPUS_POIS}
+          onSelectOrigin={setOrigin}
+          onSelectDestination={setDestination}
+          onOpenStreetView={handleOpenStreetView}
+        />
+      </div>
+
+      {/* Camada 2: Barra de busca compacta no topo */}
+      <div className="fixed top-16 left-2 right-2 sm:top-20 sm:left-4 sm:right-4 sm:max-w-md sm:mx-auto z-[998]">
+        <SearchBar
+          onSelectOrigin={setOrigin}
+          onSelectDestination={setDestination}
+          onCalculateRoute={handleCalculateRoute}
+          selectedOrigin={origin}
+          selectedDestination={destination}
+          loading={loading}
+          onOpenStreetView={handleOpenStreetView}
+        />
+      </div>
 
       {/* Camada 3: Painel de rotas calculadas (bottom sheet) */}
       {routes.length > 0 && (
@@ -183,18 +249,9 @@ export default function App() {
         location={streetViewLocation}
       />
 
-      {/* Camada 6: Tour Virtual 360° (desabilitado temporariamente) */}
-      {/* {openPanorama && (
-        <PanoramaViewer
-          panorama={openPanorama}
-          onClose={() => setOpenPanorama(null)}
-          onNavigate={handleNavigatePanorama}
-        />
-      )} */}
-
       {/* Toast de erro / notificação */}
       {error && (
-        <div className="absolute top-28 left-4 right-4 z-[1001] max-w-md mx-auto animate-slide-down">
+        <div className="absolute top-36 left-4 right-4 z-[1001] max-w-md mx-auto animate-slide-down">
           <div className="bg-red-600 text-white text-xs px-4 py-3 rounded-xl shadow-xl flex items-center justify-between">
             <span>⚠️ {error}</span>
             <button
