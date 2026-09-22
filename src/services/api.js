@@ -9,7 +9,7 @@
 
 const API_URL = import.meta.env?.VITE_API_URL || 'http://localhost:3000/api';
 
-import { CAMPUS_NODES, CAMPUS_EDGES, NETWORK_CONFIG, haversine } from '../data/campusNetwork.js';
+import { findPath } from './networkService';
 
 // ============================================================================
 // Pontos de Interesse (POIs) Oficiais do Campus UNAERP (Ribeirânia - Ribeirão Preto)
@@ -277,107 +277,6 @@ export const healthCheck = async () => {
   }
 };
 
-// ============================================================================
-// Roteamento sobre a rede de caminhos do campus
-// ============================================================================
-
-// Monta grafo de adjacência a partir das arestas
-const buildGraph = () => {
-  const graph = {};
-  Object.keys(CAMPUS_NODES).forEach((id) => {
-    graph[id] = [];
-  });
-
-  CAMPUS_EDGES.forEach(([a, b]) => {
-    const nodeA = CAMPUS_NODES[a];
-    const nodeB = CAMPUS_NODES[b];
-    if (!nodeA || !nodeB) return;
-
-    const distance = haversine(nodeA.lat, nodeA.lng, nodeB.lat, nodeB.lng);
-    graph[a].push({ node: b, distance });
-    graph[b].push({ node: a, distance });
-  });
-
-  return graph;
-};
-
-// Encontra o nó mais próximo de uma coordenada (dentro do raio máximo)
-const findNearestNode = (lat, lng) => {
-  let nearest = null;
-  let minDistance = Infinity;
-
-  Object.entries(CAMPUS_NODES).forEach(([id, node]) => {
-    const distance = haversine(lat, lng, node.lat, node.lng);
-    if (distance < minDistance) {
-      minDistance = distance;
-      nearest = id;
-    }
-  });
-
-  if (minDistance > NETWORK_CONFIG.maxSnapDistance) {
-    console.warn('⚠️ Nó mais próximo além do raio máximo:', minDistance.toFixed(0), 'm');
-  }
-
-  return { nodeId: nearest, distance: minDistance };
-};
-
-// Algoritmo de Dijkstra para encontrar o caminho mais curto
-const dijkstra = (graph, startId, endId) => {
-  const distances = {};
-  const previous = {};
-  const visited = new Set();
-  const unvisited = new Set(Object.keys(graph));
-
-  Object.keys(graph).forEach((id) => {
-    distances[id] = Infinity;
-    previous[id] = null;
-  });
-  distances[startId] = 0;
-
-  while (unvisited.size > 0) {
-    // Encontra o nó não visitado com menor distância
-    let current = null;
-    let minDist = Infinity;
-    unvisited.forEach((id) => {
-      if (distances[id] < minDist) {
-        minDist = distances[id];
-        current = id;
-      }
-    });
-
-    if (current === null || current === endId) break;
-
-    unvisited.delete(current);
-    visited.add(current);
-
-    graph[current].forEach((neighbor) => {
-      if (visited.has(neighbor.node)) return;
-      const newDist = distances[current] + neighbor.distance;
-      if (newDist < distances[neighbor.node]) {
-        distances[neighbor.node] = newDist;
-        previous[neighbor.node] = current;
-      }
-    });
-  }
-
-  // Reconstrói o caminho
-  const path = [];
-  let current = endId;
-  while (current !== null) {
-    path.unshift(current);
-    current = previous[current];
-  }
-
-  return { path, distance: distances[endId] };
-};
-
-// Calcula os pontos de uma rota real entre dois nós
-const getPathCoordinates = (nodeIds) => {
-  return nodeIds.map((id) => {
-    const node = CAMPUS_NODES[id];
-    return [node.lat, node.lng];
-  });
-};
 
 // Suaviza a rota com média móvel (arredonda as curvas)
 const smoothPath = (path, intensity = 0.3) => {
@@ -426,49 +325,31 @@ const applyRouteTypeOffset = (path, routeType) => {
 export const getRouteGeometry = async (start, end, options = {}) => {
   const { routeType = 'balanced' } = options;
 
-  console.log('🗺️ Calculando rota sobre a rede do campus...');
+  console.log('🗺️ Calculando rota sobre a rede do OSM...');
 
-  // 1. Encontra nós mais próximos da origem e do destino
-  const startNode = findNearestNode(start.latitude, start.longitude);
-  const endNode = findNearestNode(end.latitude, end.longitude);
+  try {
+    const path = findPath(start.latitude, start.longitude, end.latitude, end.longitude);
 
-  console.log('📍 Origem conectada ao nó:', startNode.nodeId);
-  console.log('📍 Destino conectado ao nó:', endNode.nodeId);
+    if (!path || path.length < 2) {
+      console.warn('⚠️ Rede não retornou caminho, usando linha reta como fallback');
+      return [
+        [start.latitude, start.longitude],
+        [end.latitude, end.longitude],
+      ];
+    }
 
-  // 2. Monta grafo
-  const graph = buildGraph();
+    const smoothed = smoothPath(path, 0.2);
+    const offset = applyRouteTypeOffset(smoothed, routeType);
 
-  // 3. Aplica Dijkstra
-  const result = dijkstra(graph, startNode.nodeId, endNode.nodeId);
-
-  if (!result.path || result.path.length === 0) {
-    console.warn('⚠️ Nenhum caminho encontrado na rede, usando linha reta');
+    console.log('🎨 Rota final com', offset.length, 'pontos');
+    return offset;
+  } catch (error) {
+    console.error('Erro no roteamento:', error);
     return [
       [start.latitude, start.longitude],
       [end.latitude, end.longitude],
     ];
   }
-
-  console.log('✅ Caminho encontrado com', result.path.length, 'nós');
-
-  // 4. Converte nós em coordenadas
-  const pathCoords = getPathCoordinates(result.path);
-
-  // 5. Adiciona ponto exato da origem e do destino no início/fim
-  const fullPath = [
-    [start.latitude, start.longitude],
-    ...pathCoords,
-    [end.latitude, end.longitude],
-  ];
-
-  // 6. Aplica suavização (média móvel) para evitar quinas muito duras
-  const smoothedPath = smoothPath(fullPath, 0.3);
-
-  // 7. Adiciona variação por tipo de rota
-  const offsetPath = applyRouteTypeOffset(smoothedPath, routeType);
-
-  console.log('🎨 Rota final com', offsetPath.length, 'pontos');
-  return offsetPath;
 };
 
 
