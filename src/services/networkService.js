@@ -5,9 +5,9 @@ import campusOSM from '../data/campus-osm.geojson';
 // ============================================================================
 const CAMPUS_BOUNDS = {
   minLat: -21.2035,
-  maxLat: -21.1985,
-  minLng: -47.7810,
-  maxLng: -47.7770,
+  maxLat: -21.1990,
+  minLng: -47.7805,
+  maxLng: -47.7775,
 };
 
 const isInsideCampus = (lat, lng) =>
@@ -43,6 +43,12 @@ const buildGraph = () => {
   const nodes = {};
   let nodeIdCounter = 0;
 
+  // Contadores para diagnóstico
+  let totalFeatures = 0;
+  let filteredByType = 0;
+  let filteredByBounds = 0;
+  let processedFeatures = 0;
+
   const getNodeId = (lat, lng) => {
     const key = `${lat.toFixed(7)},${lng.toFixed(7)}`;
     if (!nodes[key]) {
@@ -56,19 +62,32 @@ const buildGraph = () => {
   };
 
   const validTypes = [
-    'footway', 'path', 'pedestrian', 'steps',
-    'service', 'residential', 'tertiary', 'cycleway',
+    'footway',    // Calçadas
+    'path',       // Trilhas / caminhos
+    'pedestrian', // Áreas de pedestre
+    'steps',      // Escadas
+    'cycleway',   // Ciclovias
+    'service',    // Acessos internos / estacionamentos (essencial para conexões do campus)
   ];
 
   const features = campusOSM?.features || [];
 
   features.forEach((feature) => {
+    totalFeatures++;
     const highway = feature?.properties?.highway;
-    if (!validTypes.includes(highway)) return;
+    if (!validTypes.includes(highway)) {
+      filteredByType++;
+      return;
+    }
 
     const coords = feature?.geometry?.coordinates || [];
     const coordsInCampus = coords.filter(([lng, lat]) => isInsideCampus(lat, lng));
-    if (coordsInCampus.length < 2) return;
+    if (coordsInCampus.length < 2) {
+      filteredByBounds++;
+      return;
+    }
+
+    processedFeatures++;
 
     for (let i = 0; i < coordsInCampus.length - 1; i++) {
       const [lng1, lat1] = coordsInCampus[i];
@@ -88,6 +107,12 @@ const buildGraph = () => {
       graph[id2].push({ node: id1, distance, highway });
     }
   });
+
+  console.log(`📊 GeoJSON processado:`);
+  console.log(`   - Total de features: ${totalFeatures}`);
+  console.log(`   - Filtrados por tipo (ruas): ${filteredByType}`);
+  console.log(`   - Filtrados por bounds: ${filteredByBounds}`);
+  console.log(`   - Processados: ${processedFeatures}`);
 
   const nodesById = {};
   Object.values(nodes).forEach((node) => {
