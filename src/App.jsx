@@ -26,6 +26,7 @@ export default function App() {
   const [destination, setDestination] = useState(null);
   const [routes, setRoutes] = useState([]);
   const [selectedRoute, setSelectedRoute] = useState(null);
+  const [showRoutePanel, setShowRoutePanel] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
   const [routeGeometry, setRouteGeometry] = useState(null);
@@ -102,6 +103,7 @@ export default function App() {
       setRoutes([]);
       setSelectedRoute(null);
       setRouteGeometry(null);
+      setShowRoutePanel(false);
       return;
     }
 
@@ -156,6 +158,7 @@ export default function App() {
 
       if (foundRoutes.length > 0) {
         setSelectedRoute(foundRoutes[0]);
+        setShowRoutePanel(true);
 
         // Auto-recolher o SearchBar após calcular rota
         setShouldCollapseSearch(true);
@@ -202,10 +205,12 @@ export default function App() {
     updateGeometry();
   }, [selectedRoute, effectiveOrigin, destination]);
 
-  const handleCloseRoutes = () => {
-    setRoutes([]);
-    setSelectedRoute(null);
-    setRouteGeometry(null);
+  const handleCloseRoutePanel = () => {
+    setShowRoutePanel(false);
+  };
+
+  const handleReopenRoutePanel = () => {
+    setShowRoutePanel(true);
   };
 
   // ============================================================================
@@ -323,14 +328,25 @@ export default function App() {
       </div>
 
       {/* Camada 3: Painel de rotas calculadas (bottom sheet) */}
-      {routes.length > 0 && (
+      {routes.length > 0 && showRoutePanel && (
         <RoutePanel
           routes={routes}
           origin={effectiveOrigin}
           destination={destination}
-          onClose={handleCloseRoutes}
+          onClose={handleCloseRoutePanel}
           onSelectRoute={setSelectedRoute}
         />
+      )}
+
+      {/* Botão flutuante para reabrir painel quando rotas estão calculadas mas painel está oculto */}
+      {routes.length > 0 && !showRoutePanel && (
+        <button
+          onClick={handleReopenRoutePanel}
+          className="fixed bottom-4 left-1/2 -translate-x-1/2 z-[1000] bg-unaerp-blue text-white px-6 py-3 rounded-full shadow-2xl font-semibold text-sm flex items-center gap-2 hover:bg-unaerp-blue-dark active:scale-95 transition"
+          aria-label="Ver rotas"
+        >
+          🗺️ Ver rotas
+        </button>
       )}
 
       {/* Camada 4: Menu flutuante de acessibilidade (FAB) */}

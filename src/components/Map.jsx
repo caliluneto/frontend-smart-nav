@@ -368,6 +368,14 @@ export default function Map({
     // Desenhar rota — SEMPRE (quando há origem e destino)
     // ========================================================================
     if (startPoint && endPoint) {
+      console.log('🎨 [Map] Desenhando rota:', {
+        hasRouteGeometry: !!routeGeometry,
+        routeGeometryLength: routeGeometry?.length || 0,
+        hasUserLocation: !!userLocation,
+        hasDestination: !!endPoint,
+        hasSelectedRoute: !!selectedRoute,
+      });
+
       let geometryToDraw = routeGeometry;
 
       // Valida a geometria: precisa ter pontos
