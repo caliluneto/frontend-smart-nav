@@ -1,4 +1,8 @@
 import campusOSM from '../data/campus-osm.geojson';
+import manualPaths from '../data/manual-paths.geojson';
+
+// Distância máxima para fundir nós manuais com nós do OSM (em metros)
+const MANUAL_SNAP_DISTANCE = 15;
 
 // ============================================================================
 // Limites do campus UNAERP (mais restritos que a bounding box do OSM)
@@ -130,6 +134,54 @@ const buildGraph = () => {
   console.log(`   - Filtrados por bounds: ${filteredByBounds}`);
   console.log(`   - Processados: ${processedFeatures}`);
 
+  // ========================================================================
+  // Processa caminhos manuais (adicionados pelo usuário)
+  // ========================================================================
+  const mergeNodeWithOSM = (manualLat, manualLng) => {
+    // Tenta encontrar um nó OSM próximo (dentro de MANUAL_SNAP_DISTANCE)
+    let nearestOSMNode = null;
+    let nearestDistance = Infinity;
+
+    Object.values(nodes).forEach((node) => {
+      const dist = haversine(manualLat, manualLng, node.lat, node.lng);
+      if (dist < nearestDistance) {
+        nearestDistance = dist;
+        nearestOSMNode = node;
+      }
+    });
+
+    // Se encontrou nó próximo, reusa ele (snap)
+    if (nearestOSMNode && nearestDistance <= MANUAL_SNAP_DISTANCE) {
+      return nearestOSMNode.id;
+    }
+
+    // Senão, cria um nó novo
+    return getNodeId(manualLat, manualLng);
+  };
+
+  const manualFeatures = manualPaths?.features || [];
+  manualFeatures.forEach((feature) => {
+    const coords = feature?.geometry?.coordinates || [];
+
+    for (let i = 0; i < coords.length - 1; i++) {
+      const [lng1, lat1] = coords[i];
+      const [lng2, lat2] = coords[i + 1];
+
+      const id1 = mergeNodeWithOSM(lat1, lng1);
+      const id2 = mergeNodeWithOSM(lat2, lng2);
+
+      if (id1 === id2) continue;
+
+      const distance = haversine(lat1, lng1, lat2, lng2);
+
+      if (!graph[id1]) graph[id1] = [];
+      if (!graph[id2]) graph[id2] = [];
+
+      graph[id1].push({ node: id2, distance, highway: 'manual' });
+      graph[id2].push({ node: id1, distance, highway: 'manual' });
+    }
+  });
+
   // ============================================================
   // CONECTAR NÓS MANUAIS À REDE
   // ============================================================
@@ -172,6 +224,7 @@ const buildGraph = () => {
   NODES = nodesById;
 
   const totalEdges = Object.values(graph).reduce((acc, a) => acc + a.length, 0) / 2;
+  console.log(`🛣️ Caminhos manuais adicionados: ${manualFeatures.length}`);
   console.log(`🌐 Grafo construído: ${Object.keys(nodesById).length} nós, ${totalEdges} arestas`);
 
   return { graph, nodes: nodesById };
