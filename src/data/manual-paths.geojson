@@ -321,6 +321,48 @@
         ]
       },
       "properties": {}
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "LineString",
+        "coordinates": [
+          [
+            -47.779648,
+            -21.202825
+          ],
+          [
+            -47.780069,
+            -21.202405
+          ],
+          [
+            -47.779756,
+            -21.202137
+          ],
+          [
+            -47.779589,
+            -21.202007
+          ]
+        ]
+      },
+      "properties": {}
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "LineString",
+        "coordinates": [
+          [
+            -47.778881,
+            -21.201735
+          ],
+          [
+            -47.778704,
+            -21.201712
+          ]
+        ]
+      },
+      "properties": {}
     }
   ]
 }
