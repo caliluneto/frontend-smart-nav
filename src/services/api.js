@@ -26,6 +26,7 @@ export const UNAERP_CAMPUS_POIS = [
   { id: 'bloco-h', name: 'Bloco H', type: 'classroom', latitude: -21.202808, longitude: -47.779155, description: 'Bloco de salas de aula H' },
   { id: 'bloco-i', name: 'Bloco I', type: 'classroom', latitude: -21.199212, longitude: -47.777851, description: 'Arquitetura e Urbanismo' },
   { id: 'bloco-k', name: 'Bloco K', type: 'classroom', latitude: -21.202237, longitude: -47.778468, description: 'Bloco de salas de aula K' },
+  { id: 'bloco-m', name: 'Bloco M', type: 'health', latitude: -21.201322, longitude: -47.780179, description: 'Clínica de Odontologia' },
   { id: 'bloco-r', name: 'Bloco R', type: 'classroom', latitude: -21.201332, longitude: -47.779697, description: 'Secretaria da Medicina' },
   { id: 'bloco-s', name: 'Bloco S', type: 'classroom', latitude: -21.201387, longitude: -47.779380, description: 'Bloco de salas de aula S' },
 

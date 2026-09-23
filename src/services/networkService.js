@@ -43,12 +43,6 @@ const buildGraph = () => {
   const nodes = {};
   let nodeIdCounter = 0;
 
-  // Contadores para diagnóstico
-  let totalFeatures = 0;
-  let filteredByType = 0;
-  let filteredByBounds = 0;
-  let processedFeatures = 0;
-
   const getNodeId = (lat, lng) => {
     const key = `${lat.toFixed(7)},${lng.toFixed(7)}`;
     if (!nodes[key]) {
@@ -60,6 +54,28 @@ const buildGraph = () => {
     }
     return nodes[key].id;
   };
+
+  // ============================================================
+  // NÓS MANUAIS (não presentes no OSM ou POIs críticos)
+  // ============================================================
+  const MANUAL_NODES = [
+    { id: 'manual-bloco-m', lat: -21.201322, lng: -47.780179, connectsTo: 'auto' },
+  ];
+
+  // Adiciona nós manuais ao grafo
+  MANUAL_NODES.forEach((manual) => {
+    const manualId = getNodeId(manual.lat, manual.lng);
+
+    // Conecta ao nó mais próximo automaticamente
+    // (será feito após o grafo ser construído)
+    manual._nodeId = manualId;
+  });
+
+  // Contadores para diagnóstico
+  let totalFeatures = 0;
+  let filteredByType = 0;
+  let filteredByBounds = 0;
+  let processedFeatures = 0;
 
   const validTypes = [
     'footway',    // Calçadas
@@ -113,6 +129,39 @@ const buildGraph = () => {
   console.log(`   - Filtrados por tipo (ruas): ${filteredByType}`);
   console.log(`   - Filtrados por bounds: ${filteredByBounds}`);
   console.log(`   - Processados: ${processedFeatures}`);
+
+  // ============================================================
+  // CONECTAR NÓS MANUAIS À REDE
+  // ============================================================
+  MANUAL_NODES.forEach((manual) => {
+    const manualId = manual._nodeId;
+    
+    // Encontra o nó mais próximo
+    let nearestId = null;
+    let nearestDist = Infinity;
+    
+    Object.values(nodes).forEach((node) => {
+      if (node.id === manualId) return;
+      const dist = haversine(manual.lat, manual.lng, node.lat, node.lng);
+      if (dist < nearestDist) {
+        nearestDist = dist;
+        nearestId = node.id;
+      }
+    });
+    
+    // Conecta manual ↔ nó mais próximo (se dentro de 100m)
+    if (nearestId && nearestDist < 100) {
+      if (!graph[manualId]) graph[manualId] = [];
+      if (!graph[nearestId]) graph[nearestId] = [];
+      
+      graph[manualId].push({ node: nearestId, distance: nearestDist, highway: 'manual' });
+      graph[nearestId].push({ node: manualId, distance: nearestDist, highway: 'manual' });
+      
+      console.log(`📍 Nó manual conectado: ${manualId} → ${nearestId} (${nearestDist.toFixed(0)}m)`);
+    } else {
+      console.warn(`⚠️ Nó manual ${manualId} não pôde ser conectado (distância: ${nearestDist.toFixed(0)}m)`);
+    }
+  });
 
   const nodesById = {};
   Object.values(nodes).forEach((node) => {

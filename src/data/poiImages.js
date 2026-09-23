@@ -55,6 +55,11 @@ export const POI_IMAGES = {
     description: 'Bloco de salas de aula K. Salas multiuso para cursos da área de Humanas e Sociais.',
     extraInfo: 'Próximo ao Centro de Convivência',
   },
+  'bloco-m': {
+    imageUrl: 'https://fahtpzebuhvdnylgadyz.supabase.co/storage/v1/object/public/poi-images/bloco-m.jpeg',
+    description: 'Clínica de Odontologia. Atendimento odontológico à comunidade e clínicas práticas.',
+    extraInfo: 'Bloco M',
+  },
   'bloco-r': {
     imageUrl: null,
     description: 'Secretaria e coordenação do curso de Medicina. Atendimento a alunos, professores e coordenação acadêmica de saúde.',
