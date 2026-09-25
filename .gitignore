@@ -56,3 +56,5 @@ coverage/
 *.tmp
 *.temp
 *.bak
+# Cline rules (local only)
+.clinerules
