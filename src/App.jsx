@@ -14,9 +14,11 @@ export default function App() {
   const [userLocation, setUserLocation] = useState(null);
   const [locating, setLocating] = useState(false);
   const [originOverride, setOriginOverride] = useState(null);
+  const [useOriginOverride, setUseOriginOverride] = useState(false);
 
   // Origem efetiva para navegação: ponto fixado manualmente ou GPS real
-  const effectiveOrigin = originOverride || (userLocation ? {
+  // IMPORTANTE: só usa originOverride se useOriginOverride estiver true
+  const effectiveOrigin = (useOriginOverride && originOverride) || (userLocation ? {
     ...userLocation,
     name: 'Sua Localização',
     id: 'user-gps',
@@ -109,10 +111,34 @@ export default function App() {
 
     setDestination(poi);
 
-    const fromPoint = effectiveOrigin;
+    // BUGFIX A: Sempre usa userLocation como origem, a menos que useOriginOverride esteja true
+    const originToUse = (useOriginOverride && originOverride) 
+      ? originOverride 
+      : userLocation;
+
+    console.log('🔍 [Busca] Origem usada:', {
+      useOriginOverride,
+      originOverride: originOverride ? `${originOverride.name || 'Manual'}` : null,
+      userLocation: userLocation ? `${userLocation.latitude.toFixed(5)}, ${userLocation.longitude.toFixed(5)}` : null,
+      originToUse: originToUse ? `${originToUse.latitude?.toFixed(5) || originToUse.latitude}, ${originToUse.longitude?.toFixed(5) || originToUse.longitude}` : null,
+    });
+
+    const fromPoint = originToUse ? {
+      ...originToUse,
+      name: originToUse.name || 'Sua Localização',
+      id: originToUse.id || 'user-gps',
+    } : null;
+
     if (!fromPoint) {
       console.log('ℹ️ Aguardando origem para calcular rota');
       return;
+    }
+
+    // BUGFIX A: Limpar o override após usar
+    if (useOriginOverride) {
+      console.log('🧹 Limpando originOverride após uso');
+      setUseOriginOverride(false);
+      setOriginOverride(null);
     }
 
     // Validação: origem e destino não podem ser iguais
@@ -182,7 +208,7 @@ export default function App() {
     } finally {
       setLoading(false);
     }
-  }, [effectiveOrigin, a11yPrefs]);
+  }, [userLocation, originOverride, useOriginOverride, a11yPrefs]);
 
   // Recalcular rota manual (via botão do SearchBar)
   const handleCalculateRoute = useCallback(async () => {
@@ -213,6 +239,20 @@ export default function App() {
     setShowRoutePanel(true);
   };
 
+  // BUGFIX A: Handler para limpar origem (usado pelo SearchBar)
+  const handleClearOrigin = useCallback((poi) => {
+    if (!poi) {
+      // Limpar tudo quando poi é null
+      console.log('🧹 [Clear] Limpando originOverride');
+      setOriginOverride(null);
+      setUseOriginOverride(false);
+    } else {
+      // Se está setando um novo POI manualmente via SearchBar, não ativar override
+      setOriginOverride(poi);
+      setUseOriginOverride(false);
+    }
+  }, []);
+
   // ============================================================================
   // Listeners globais para eventos dos POIs (popups e modal)
   // ============================================================================
@@ -221,7 +261,9 @@ export default function App() {
       const poiId = event.detail;
       const poi = UNAERP_CAMPUS_POIS.find((p) => p.id === poiId);
       if (poi) {
+        console.log('📍 [Partir daqui] Setando origem override:', poi.name);
         setOriginOverride(poi);
+        setUseOriginOverride(true);
         window.dispatchEvent(new CustomEvent('close-poi-popup'));
       }
     };
@@ -309,7 +351,7 @@ export default function App() {
           selectedRoute={selectedRoute}
           routeGeometry={routeGeometry}
           pois={UNAERP_CAMPUS_POIS}
-          onSelectOrigin={setOriginOverride}
+          onSelectOrigin={handleClearOrigin}
           onSelectDestination={handleSelectDestination}
         />
       </div>
@@ -317,7 +359,7 @@ export default function App() {
       {/* Camada 2: Barra de busca compacta no topo */}
       <div className="fixed top-16 left-2 right-2 sm:top-20 sm:left-4 sm:right-4 sm:max-w-md sm:mx-auto z-[998]">
         <SearchBar
-          onSelectOrigin={setOriginOverride}
+          onSelectOrigin={handleClearOrigin}
           onSelectDestination={handleSelectDestination}
           onCalculateRoute={handleCalculateRoute}
           selectedOrigin={effectiveOrigin}
@@ -363,7 +405,9 @@ export default function App() {
           }}
           onSetOrigin={(poi) => {
             setDetailPoi(null);
+            console.log('📍 [Modal - Partir daqui] Setando origem override:', poi.name);
             setOriginOverride(poi);
+            setUseOriginOverride(true);
           }}
         />
       )}
