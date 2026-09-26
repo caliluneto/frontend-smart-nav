@@ -152,7 +152,6 @@ const getPoiEmoji = (type) => {
 export default function Map({
   startPoint,
   endPoint,
-  userLocation,
   routes = [],
   selectedRoute,
   routeGeometry,
@@ -311,40 +310,19 @@ export default function Map({
     };
     window.addEventListener('close-poi-popup', closePopupHandler);
 
-    // Marcador de localização real do usuário (GPS do celular com pulso animado)
-    if (userLocation) {
-      L.marker([userLocation.latitude, userLocation.longitude], {
-        icon: createUserLocationIcon(),
-        zIndexOffset: 1002,
+    // Marcador de início / ponto de partida (verde)
+    if (startPoint) {
+      L.marker([startPoint.latitude, startPoint.longitude], {
+        icon: createOriginIcon(),
+        zIndexOffset: 1001,
       })
         .bindPopup(`
-          <div style="font-family: Inter, sans-serif; padding: 4px; text-align: center;">
-            <strong style="color: #1a73e8; font-size: 13px;">📍 Sua localização real</strong><br/>
-            <span style="color: #666; font-size: 11px;">GPS ativo</span>
-          </div>
-        `)
-        .addTo(layerGroup.current);
-    }
-
-    // Marcador de início / ponto de partida
-    if (startPoint) {
-      const isSameAsGps = userLocation &&
-        Math.abs(startPoint.latitude - userLocation.latitude) < 0.00005 &&
-        Math.abs(startPoint.longitude - userLocation.longitude) < 0.00005;
-
-      if (!isSameAsGps) {
-        L.marker([startPoint.latitude, startPoint.longitude], {
-          icon: createOriginIcon(),
-          zIndexOffset: 1001,
-        })
-          .bindPopup(`
-            <div style="font-family: Inter, sans-serif; padding: 4px;">
+          <div style="font-family: Inter, sans-serif; padding: 4px;">
               <strong style="color: #10b981; font-size: 14px;">🟢 Ponto de Partida</strong><br/>
               <span style="color: #333; font-weight: 500;">${startPoint.name || 'Origem'}</span>
             </div>
           `)
           .addTo(layerGroup.current);
-      }
       bounds.extend([startPoint.latitude, startPoint.longitude]);
     }
 
@@ -371,7 +349,6 @@ export default function Map({
       console.log('🎨 [Map] Desenhando rota:', {
         hasRouteGeometry: !!routeGeometry,
         routeGeometryLength: routeGeometry?.length || 0,
-        hasUserLocation: !!userLocation,
         hasDestination: !!endPoint,
         hasSelectedRoute: !!selectedRoute,
       });
@@ -446,7 +423,7 @@ export default function Map({
     return () => {
       window.removeEventListener('close-poi-popup', closePopupHandler);
     };
-  }, [startPoint, endPoint, userLocation, routes, selectedRoute, routeGeometry, pois, onSelectOrigin, onSelectDestination]);
+  }, [startPoint, endPoint, routes, selectedRoute, routeGeometry, pois, onSelectOrigin, onSelectDestination]);
 
   return (
     <div className="relative w-full h-full">

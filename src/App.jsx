@@ -10,21 +10,8 @@ import { calculateRoute, getRouteGeometry, UNAERP_CAMPUS_POIS } from './services
 // App — Campus Smart Navigation UNAERP
 // ============================================================================
 export default function App() {
-  // State de localização do usuário via GPS
-  const [userLocation, setUserLocation] = useState(null);
-  const [locating, setLocating] = useState(false);
-  const [originOverride, setOriginOverride] = useState(null);
-  const [useOriginOverride, setUseOriginOverride] = useState(false);
-
-  // Origem efetiva para navegação: ponto fixado manualmente ou GPS real
-  // IMPORTANTE: só usa originOverride se useOriginOverride estiver true
-  const effectiveOrigin = (useOriginOverride && originOverride) || (userLocation ? {
-    ...userLocation,
-    name: 'Sua Localização',
-    id: 'user-gps',
-  } : null);
-
-  // State de navegação
+  // State de navegação - origem e destino selecionados manualmente via busca
+  const [origin, setOrigin] = useState(null);
   const [destination, setDestination] = useState(null);
   const [routes, setRoutes] = useState([]);
   const [selectedRoute, setSelectedRoute] = useState(null);
@@ -41,64 +28,33 @@ export default function App() {
     avoidStairs: false,
   });
 
-  // ============================================================================
-  // GPS Real — Obter localização do celular via Geolocation API
-  // ============================================================================
-  const getUserLocation = useCallback(() => {
-    if (!navigator.geolocation) {
-      console.warn('Geolocalização não suportada neste navegador');
-      setError('Seu navegador não suporta geolocalização');
-      return;
-    }
-
-    setLocating(true);
-    setError(null);
-
-    navigator.geolocation.getCurrentPosition(
-      (position) => {
-        const { latitude, longitude } = position.coords;
-        console.log('📍 Localização GPS obtida:', latitude, longitude);
-        setUserLocation({ latitude, longitude });
-        setLocating(false);
-      },
-      (err) => {
-        console.warn('Erro GPS:', err.message);
-        setLocating(false);
-        // Fallback: localização padrão (mas avisa o usuário)
-        if (err.code === err.PERMISSION_DENIED) {
-          setError('Permissão de localização negada. Usando localização aproximada do campus.');
-        } else if (err.code === err.POSITION_UNAVAILABLE) {
-          setError('Não foi possível obter sua localização. Usando localização aproximada.');
-        } else if (err.code === err.TIMEOUT) {
-          setError('Tempo esgotado ao buscar localização.');
-        }
-        // Fallback para o centro do campus
-        setUserLocation({
-          latitude: -21.2014,
-          longitude: -47.7790,
-        });
-      },
-      {
-        enableHighAccuracy: true,
-        timeout: 10000,
-        maximumAge: 60000,
-      }
-    );
-  }, []);
-
-  // Inicialização: solicitar permissão de localização GPS automaticamente
-  useEffect(() => {
-    getUserLocation();
-  }, [getUserLocation]);
-
   // Log de depuração do estado de rotas
   useEffect(() => {
     console.log('🔍 Estado de rotas:', { routesCount: routes.length, hasSelectedRoute: !!selectedRoute });
   }, [routes, selectedRoute]);
 
   // ============================================================================
-  // Calcular rota diretamente ao selecionar destino
+  // Calcular rota entre origem e destino selecionados
   // ============================================================================
+  const handleSelectOrigin = useCallback(async (poi) => {
+    if (!poi) {
+      setOrigin(null);
+      setRoutes([]);
+      setSelectedRoute(null);
+      setRouteGeometry(null);
+      setShowRoutePanel(false);
+      return;
+    }
+
+    setOrigin(poi);
+    console.log('🟢 [Origem] Selecionada:', poi.name);
+
+    // Se já tem destino, calcula rota automaticamente
+    if (destination) {
+      await calculateRouteFor(poi, destination);
+    }
+  }, [destination]);
+
   const handleSelectDestination = useCallback(async (poi) => {
     if (!poi) {
       setDestination(null);
@@ -110,45 +66,29 @@ export default function App() {
     }
 
     setDestination(poi);
+    console.log('🔴 [Destino] Selecionado:', poi.name);
 
-    // BUGFIX A: Sempre usa userLocation como origem, a menos que useOriginOverride esteja true
-    const originToUse = (useOriginOverride && originOverride) 
-      ? originOverride 
-      : userLocation;
+    // Se já tem origem, calcula rota automaticamente
+    if (origin) {
+      await calculateRouteFor(origin, poi);
+    }
+  }, [origin]);
 
-    console.log('🔍 [Busca] Origem usada:', {
-      useOriginOverride,
-      originOverride: originOverride ? `${originOverride.name || 'Manual'}` : null,
-      userLocation: userLocation ? `${userLocation.latitude.toFixed(5)}, ${userLocation.longitude.toFixed(5)}` : null,
-      originToUse: originToUse ? `${originToUse.latitude?.toFixed(5) || originToUse.latitude}, ${originToUse.longitude?.toFixed(5) || originToUse.longitude}` : null,
-    });
-
-    const fromPoint = originToUse ? {
-      ...originToUse,
-      name: originToUse.name || 'Sua Localização',
-      id: originToUse.id || 'user-gps',
-    } : null;
-
-    if (!fromPoint) {
-      console.log('ℹ️ Aguardando origem para calcular rota');
+  // Função auxiliar para calcular rota entre dois pontos
+  const calculateRouteFor = useCallback(async (fromPoi, toPoi) => {
+    if (!fromPoi || !toPoi) {
+      console.log('ℹ️ Aguardando origem e destino para calcular rota');
       return;
     }
 
-    // BUGFIX A: Limpar o override após usar
-    if (useOriginOverride) {
-      console.log('🧹 Limpando originOverride após uso');
-      setUseOriginOverride(false);
-      setOriginOverride(null);
-    }
-
     // Validação: origem e destino não podem ser iguais
-    const sameAsOrigin =
-      (fromPoint.id && poi.id && fromPoint.id === poi.id) ||
-      (fromPoint.name && poi.name && fromPoint.name.trim().toLowerCase() === poi.name.trim().toLowerCase()) ||
-      (Math.abs(fromPoint.latitude - poi.latitude) < 0.00001 &&
-       Math.abs(fromPoint.longitude - poi.longitude) < 0.00001);
+    const sameLocation =
+      (fromPoi.id && toPoi.id && fromPoi.id === toPoi.id) ||
+      (fromPoi.name && toPoi.name && fromPoi.name.trim().toLowerCase() === toPoi.name.trim().toLowerCase()) ||
+      (Math.abs(fromPoi.latitude - toPoi.latitude) < 0.00001 &&
+       Math.abs(fromPoi.longitude - toPoi.longitude) < 0.00001);
 
-    if (sameAsOrigin) {
+    if (sameLocation) {
       setError('Origem e destino não podem ser o mesmo local');
       return;
     }
@@ -158,18 +98,20 @@ export default function App() {
     setRoutes([]);
 
     try {
+      console.log('🗺️ Calculando rota:', fromPoi.name, '→', toPoi.name);
+      
       const result = await calculateRoute(
         {
-          id: fromPoint.id || 'origin',
-          name: fromPoint.name || 'Minha Localização',
-          latitude: fromPoint.latitude,
-          longitude: fromPoint.longitude,
+          id: fromPoi.id || 'origin',
+          name: fromPoi.name,
+          latitude: fromPoi.latitude,
+          longitude: fromPoi.longitude,
         },
         {
-          id: poi.id,
-          name: poi.name,
-          latitude: poi.latitude,
-          longitude: poi.longitude,
+          id: toPoi.id,
+          name: toPoi.name,
+          latitude: toPoi.latitude,
+          longitude: toPoi.longitude,
         },
         {
           routeType: 'balanced',
@@ -192,8 +134,8 @@ export default function App() {
 
         // Buscar geometria da rota local dentro do campus
         const geometry = await getRouteGeometry(
-          { latitude: fromPoint.latitude, longitude: fromPoint.longitude },
-          { latitude: poi.latitude, longitude: poi.longitude },
+          { latitude: fromPoi.latitude, longitude: fromPoi.longitude },
+          { latitude: toPoi.latitude, longitude: toPoi.longitude },
           { routeType: foundRoutes[0]?.type || 'balanced' }
         );
         if (geometry) {
@@ -208,20 +150,23 @@ export default function App() {
     } finally {
       setLoading(false);
     }
-  }, [userLocation, originOverride, useOriginOverride, a11yPrefs]);
+  }, [a11yPrefs]);
 
   // Recalcular rota manual (via botão do SearchBar)
   const handleCalculateRoute = useCallback(async () => {
-    if (!destination) return;
-    await handleSelectDestination(destination);
-  }, [destination, handleSelectDestination]);
+    if (!origin || !destination) {
+      setError('Selecione origem e destino para calcular a rota');
+      return;
+    }
+    await calculateRouteFor(origin, destination);
+  }, [origin, destination, calculateRouteFor]);
 
   // Atualizar geometria quando o usuário troca de rota selecionada no RoutePanel
   useEffect(() => {
     const updateGeometry = async () => {
-      if (selectedRoute && effectiveOrigin && destination) {
+      if (selectedRoute && origin && destination) {
         const geometry = await getRouteGeometry(
-          { latitude: effectiveOrigin.latitude, longitude: effectiveOrigin.longitude },
+          { latitude: origin.latitude, longitude: origin.longitude },
           { latitude: destination.latitude, longitude: destination.longitude },
           { routeType: selectedRoute.type || 'balanced' }
         );
@@ -229,7 +174,7 @@ export default function App() {
       }
     };
     updateGeometry();
-  }, [selectedRoute, effectiveOrigin, destination]);
+  }, [selectedRoute, origin, destination]);
 
   const handleCloseRoutePanel = () => {
     setShowRoutePanel(false);
@@ -239,20 +184,6 @@ export default function App() {
     setShowRoutePanel(true);
   };
 
-  // BUGFIX A: Handler para limpar origem (usado pelo SearchBar)
-  const handleClearOrigin = useCallback((poi) => {
-    if (!poi) {
-      // Limpar tudo quando poi é null
-      console.log('🧹 [Clear] Limpando originOverride');
-      setOriginOverride(null);
-      setUseOriginOverride(false);
-    } else {
-      // Se está setando um novo POI manualmente via SearchBar, não ativar override
-      setOriginOverride(poi);
-      setUseOriginOverride(false);
-    }
-  }, []);
-
   // ============================================================================
   // Listeners globais para eventos dos POIs (popups e modal)
   // ============================================================================
@@ -261,9 +192,8 @@ export default function App() {
       const poiId = event.detail;
       const poi = UNAERP_CAMPUS_POIS.find((p) => p.id === poiId);
       if (poi) {
-        console.log('📍 [Partir daqui] Setando origem override:', poi.name);
-        setOriginOverride(poi);
-        setUseOriginOverride(true);
+        console.log('📍 [Partir daqui] Setando origem:', poi.name);
+        handleSelectOrigin(poi);
         window.dispatchEvent(new CustomEvent('close-poi-popup'));
       }
     };
@@ -330,28 +260,16 @@ export default function App() {
         </div>
       </div>
 
-      {/* Botão flutuante para ativar localização quando GPS ainda não foi obtido */}
-      {!userLocation && !locating && (
-        <button
-          onClick={getUserLocation}
-          className="fixed top-20 left-1/2 -translate-x-1/2 z-[997] bg-unaerp-blue text-white px-4 py-2.5 rounded-full shadow-2xl font-semibold text-xs flex items-center gap-2 transition hover:bg-unaerp-blue-dark active:scale-95 whitespace-nowrap border-2 border-white/20"
-          aria-label="Ativar minha localização"
-        >
-          📍 Ativar minha localização
-        </button>
-      )}
-
       {/* Camada 1: Mapa fullscreen */}
       <div className="fixed inset-0 w-full h-full">
         <Map
-          startPoint={effectiveOrigin}
+          startPoint={origin}
           endPoint={destination}
-          userLocation={userLocation}
           routes={routes}
           selectedRoute={selectedRoute}
           routeGeometry={routeGeometry}
           pois={UNAERP_CAMPUS_POIS}
-          onSelectOrigin={handleClearOrigin}
+          onSelectOrigin={handleSelectOrigin}
           onSelectDestination={handleSelectDestination}
         />
       </div>
@@ -359,10 +277,10 @@ export default function App() {
       {/* Camada 2: Barra de busca compacta no topo */}
       <div className="fixed top-16 left-2 right-2 sm:top-20 sm:left-4 sm:right-4 sm:max-w-md sm:mx-auto z-[998]">
         <SearchBar
-          onSelectOrigin={handleClearOrigin}
+          onSelectOrigin={handleSelectOrigin}
           onSelectDestination={handleSelectDestination}
           onCalculateRoute={handleCalculateRoute}
-          selectedOrigin={effectiveOrigin}
+          selectedOrigin={origin}
           selectedDestination={destination}
           loading={loading}
           shouldCollapse={shouldCollapseSearch}
@@ -373,7 +291,7 @@ export default function App() {
       {routes.length > 0 && showRoutePanel && (
         <RoutePanel
           routes={routes}
-          origin={effectiveOrigin}
+          origin={origin}
           destination={destination}
           onClose={handleCloseRoutePanel}
           onSelectRoute={setSelectedRoute}
@@ -405,9 +323,8 @@ export default function App() {
           }}
           onSetOrigin={(poi) => {
             setDetailPoi(null);
-            console.log('📍 [Modal - Partir daqui] Setando origem override:', poi.name);
-            setOriginOverride(poi);
-            setUseOriginOverride(true);
+            console.log('📍 [Modal - Partir daqui] Setando origem:', poi.name);
+            handleSelectOrigin(poi);
           }}
         />
       )}
