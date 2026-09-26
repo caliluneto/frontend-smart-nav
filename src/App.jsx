@@ -252,11 +252,6 @@ export default function App() {
               <p className="text-[10px] text-unaerp-yellow leading-tight">Navegação do Campus</p>
             </div>
           </div>
-          {locating && (
-            <span className="text-[11px] text-white/90 bg-white/10 px-2.5 py-1 rounded-full animate-pulse">
-              Buscando GPS...
-            </span>
-          )}
         </div>
       </div>
 
