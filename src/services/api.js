@@ -25,19 +25,23 @@ export const UNAERP_CAMPUS_POIS = [
   { id: 'bloco-g', name: 'Bloco G', type: 'classroom', latitude: -21.202678, longitude: -47.778790, description: 'Bloco de salas de aula G' },
   { id: 'bloco-h', name: 'Bloco H', type: 'classroom', latitude: -21.202808, longitude: -47.779155, description: 'Bloco de salas de aula H' },
   { id: 'bloco-i', name: 'Bloco I', type: 'classroom', latitude: -21.199212, longitude: -47.777851, description: 'Arquitetura e Urbanismo' },
+  { id: 'bloco-j', name: 'Bloco J', type: 'classroom', latitude: -21.199457, longitude: -47.777937, description: 'Bloco de Farmácia' },
   { id: 'bloco-k', name: 'Bloco K', type: 'classroom', latitude: -21.202237, longitude: -47.778468, description: 'Bloco de salas de aula K' },
   { id: 'bloco-m', name: 'Bloco M', type: 'health', latitude: -21.201322, longitude: -47.780179, description: 'Clínica de Odontologia' },
+  { id: 'bloco-n', name: 'Bloco N', type: 'classroom', latitude: -21.199062, longitude: -47.778597, description: 'Bloco de Biotecnologia' },
   { id: 'bloco-r', name: 'Bloco R', type: 'classroom', latitude: -21.201332, longitude: -47.779697, description: 'Secretaria da Medicina' },
   { id: 'bloco-s', name: 'Bloco S', type: 'classroom', latitude: -21.201387, longitude: -47.779380, description: 'Bloco de salas de aula S' },
 
   // ===== Serviços e Alimentação =====
   { id: 'cantina', name: 'Cantina', type: 'cafeteria', latitude: -21.202322, longitude: -47.779104, description: 'Cantina e lanchonetes' },
+  { id: 'cantina-bloco-i', name: 'Cantina do Bloco I', type: 'cafeteria', latitude: -21.199067, longitude: -47.778168, description: 'Cantina do Bloco I' },
   { id: 'plug', name: 'Centro de Convivência / Plug', type: 'cafeteria', latitude: -21.202458, longitude: -47.779372, description: 'Centro de convivência e espaço Plug' },
   { id: 'bradesco', name: 'Bradesco (Agência)', type: 'admin', latitude: -21.202570, longitude: -47.779605, description: 'Agência bancária Bradesco no campus' },
 
   // ===== Saúde e Esporte =====
   { id: 'hospital', name: 'Hospital Electro Bonini', type: 'health', latitude: -21.201037, longitude: -47.779943, description: 'Hospital universitário' },
   { id: 'quadras', name: 'Quadras Esportivas', type: 'sports', latitude: -21.200317, longitude: -47.779326, description: 'Complexo esportivo' },
+  { id: 'academia-geraldo-barreto', name: 'Academia Geraldo Barreto', type: 'sports', latitude: -21.201345, longitude: -47.778970, description: 'Academia de ginástica e musculação' },
 
   // ===== Estacionamentos =====
   { id: 'estacionamento-costabile', name: 'Estacionamento Av. Costábile Romano', type: 'parking', latitude: -21.201762, longitude: -47.780576, description: 'Estacionamento pela Av. Costábile Romano' },
